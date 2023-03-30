@@ -75,6 +75,7 @@ module Selfgravity
 !
   real, dimension(mz) :: rho0z = 0.0
 !
+!$omp threadprivate(q)
   contains
 !***********************************************************************
     subroutine register_selfgravity()

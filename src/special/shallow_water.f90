@@ -128,6 +128,7 @@ module Special
   integer :: idiag_dtgh=0
   integer :: idiag_totKE=0
 !
+!$omp threadprivate(advec_cg2, q)
   contains
 !
 !***********************************************************************

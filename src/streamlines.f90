@@ -204,8 +204,6 @@ module Streamlines
 !
 ! 20-feb-12/simon: coded
 !
-    use Mpicomm
-
     integer :: grid_pos(3), grid_pos_send(3)
     real, dimension (mx,my,mz,mfarray) :: f
     real, dimension(3+mfarray) :: vvb, vvb_send
@@ -242,7 +240,7 @@ module Streamlines
 !
 !     start non-blocking receive and blocking send
       if (receiving == 0) then
-        call MPI_IRECV(vvb,3+mfarray,mpi_precision,proc_id,VV_RCV,MPI_comm_world,request_rcv,ierr)
+        call MPI_IRECV(vvb,3+mfarray,MPI_REAL,proc_id,VV_RCV,MPI_comm_world,request_rcv,ierr)
         if (ierr /= MPI_SUCCESS) &
             call fatal_error("streamlines", "MPI_IRECV could not create a receive request")
         receiving = 1
@@ -446,7 +444,7 @@ module Streamlines
 !   13-feb-12/simon: coded
 !   20-mar-14/simon: moved the bulk of it into 'trace_single' routine
 !
-    use Mpicomm
+    use Mpicomm, only: mpibarrier
 !
     real, dimension (mx,my,mz,mfarray) :: f
     real, pointer, dimension (:,:) :: tracers
@@ -522,8 +520,6 @@ module Streamlines
 !
 !   20-mar-14/simon: coded
 !
-    use Mpicomm
-
     real, pointer, dimension (:,:,:,:) :: vv   ! vector field which is beaing traced
     real, dimension (mx,my,mz,mfarray) :: f
 !   borrowed position on the grid
@@ -550,7 +546,7 @@ module Streamlines
 !             receive completed, send the vector field
               vvb(1:3) = vv(grid_pos_b(1),grid_pos_b(2),grid_pos_b(3),:)
               vvb(4:) = f(grid_pos_b(1),grid_pos_b(2),grid_pos_b(3),:)
-              call MPI_SEND(vvb,3+mfarray,mpi_precision,status(MPI_SOURCE),VV_RCV,MPI_comm_world,ierr)
+              call MPI_SEND(vvb,3+mfarray,MPI_REAL,status(MPI_SOURCE),VV_RCV,MPI_comm_world,ierr)
               if (ierr /= MPI_SUCCESS) then
                 call fatal_error("streamlines", "MPI_SEND could not send")
                 exit

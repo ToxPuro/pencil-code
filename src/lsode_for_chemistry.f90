@@ -53,7 +53,7 @@ module LsodeForChemistry
 !  Evolution of chemical species
 !
         call dchemistry_dt(f,df,p)
-!$      if (.not.lopenmp) &
+!$      if (.false.) &
         call timing('pde_chemistry','end of mn loop',mnloop=.true.)
 !
 !  End of loops over m and n.

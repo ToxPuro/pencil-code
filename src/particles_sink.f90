@@ -32,12 +32,11 @@ module Particles_sink
   real :: aps0=0.0, aps1=0.0, aps2=0.0, aps3=0.0
   real :: bondi_accretion_grav_smooth=1.35
   real :: rsurf_to_rhill=0.0, rsurf_subgrid=0.001, cdtsubgrid=0.1
-  real, pointer :: tstart_selfgrav, gravitational_const, tselfgrav_gentle
+  real, pointer :: tstart_selfgrav, gravitational_const
   logical, allocatable, dimension (:) :: lsubgrid_accretion_attempt
   logical :: lsink_radius_dx_unit=.false., lrhop_roche_unit=.false.
   logical :: lsink_communication_all_to_all=.false.
   logical :: lsink_create_one_per_cell = .false.
-  logical :: lsink_create_one_per_27_cells = .false.
   logical :: lbondi_accretion=.false.
   logical :: lselfgravity_sinkparticles=.true.
   logical :: lsubgrid_accretion=.false., ldebug_subgrid_accretion=.false.
@@ -59,8 +58,7 @@ module Particles_sink
       lrhop_roche_unit, lbondi_accretion, lselfgravity_sinkparticles, &
       bondi_accretion_grav_smooth, lsubgrid_accretion, rsurf_to_rhill, &
       rsurf_subgrid, cdtsubgrid, ldebug_subgrid_accretion, &
-      laccrete_sink_sink, lsink_create_one_per_cell, &
-      lsink_create_one_per_27_cells
+      laccrete_sink_sink, lsink_create_one_per_cell
 !
   contains
 !***********************************************************************
@@ -93,11 +91,6 @@ module Particles_sink
       if (.not. lparticles_density) &
         call fatal_error("initialize_particles_sink", "particles_sink requires particles_density")
 !
-      if (lsink_create_one_per_cell .and. lsink_create_one_per_27_cells) &
-        call fatal_error("initialize_particles_sink", &
-            "lsink_create_one_per_cell and lsink_create_one_per_27_cells are mutually exclusive")
-!
-!
       if (lsink_radius_dx_unit) then
         sink_radius=sink_birth_radius*dx
       else
@@ -112,7 +105,6 @@ module Particles_sink
 !
       if (lselfgravity) then
         call get_shared_variable('tstart_selfgrav',tstart_selfgrav)
-        call get_shared_variable('tselfgrav_gentle',tselfgrav_gentle)
         call get_shared_variable('gravitational_const',gravitational_const)
       endif
 !
@@ -251,7 +243,6 @@ module Particles_sink
 !
 !  07-aug-12/anders: coded
 !  25-aug-15/ccyang: added switch to create at most one sink per cell
-!  03-jan-23/urs: added switch to create at most one sink in each cube of 3x3x3 cells
 !
       use Boundcond
       use Diagnostics
@@ -264,8 +255,8 @@ module Particles_sink
       logical :: lfirstcall = .true.
 !
       integer, dimension(:,:,:), allocatable, save :: sid
-      real, dimension(:,:,:), allocatable, save :: srhop, sgpotself
-      real, dimension(1) :: rhop_interp, gpotself_interp
+      real, dimension(:,:,:), allocatable, save :: srhop
+      real, dimension(1) :: rhop_interp
       integer :: k, ix0, iy0, iz0, npar_sink_loc, iblock
       real :: rhoc,rhop_interp_diag
 !
@@ -278,23 +269,10 @@ module Particles_sink
 !
       if (rhop_sink_create==-1.0) return
 !
-!
-!  If lsink_create_one_per_27_cells, sink particle are created at local
-!  minima of the gravitational potential. Therefore, only create them
-!  if self-gravity has attained its full strength.
-!
-      if (lsink_create_one_per_27_cells &
-          .and. t<tstart_selfgrav+tselfgrav_gentle) return
-!
-!
 !  Allocate working arrays.
 !
       alloc: if (lfirstcall) then
-        if (lsink_create_one_per_cell) then
-          allocate(sid(mx,my,mz), srhop(mx,my,mz))
-        elseif (lsink_create_one_per_27_cells) then
-          allocate(sid(mx,my,mz), sgpotself(mx,my,mz))
-        endif
+        if (lsink_create_one_per_cell) allocate(sid(mx,my,mz), srhop(mx,my,mz))
         lfirstcall = .false.
       endif alloc
 !
@@ -303,11 +281,7 @@ module Particles_sink
       init: if (lsink_create_one_per_cell) then
         sid = 0
         srhop = 0.0
-      elseif (lsink_create_one_per_27_cells) then
-        sid = 0
-        sgpotself = 0.
-        rhoc = rhop_sink_create
-      else
+      else init
         rhoc = rhop_sink_create
       endif init
 !
@@ -328,27 +302,16 @@ module Particles_sink
                 if (lparticlemesh_cic) then
                   call interpolate_linear(f,irhop,irhop, &
                       fp(k,ixp:izp),rhop_interp,ineargrid(k,:),iblock,ipar(k))
-                  if (lsink_create_one_per_27_cells) &
-                    call interpolate_linear(f,ipotself,ipotself, &
-                        fp(k,ixp:izp),gpotself_interp,ineargrid(k,:),iblock,ipar(k))
                 elseif (lparticlemesh_tsc) then
                   if (linterpolate_spline) then
                     call interpolate_quadratic_spline(f,irhop,irhop, &
                         fp(k,ixp:izp),rhop_interp,ineargrid(k,:),iblock,ipar(k))
-                    if (lsink_create_one_per_27_cells) &
-                      call interpolate_quadratic_spline(f,ipotself,ipotself, &
-                          fp(k,ixp:izp),gpotself_interp,ineargrid(k,:),iblock,ipar(k))
                   else
                     call interpolate_quadratic(f,irhop,irhop, &
                         fp(k,ixp:izp),rhop_interp,ineargrid(k,:),iblock,ipar(k))
-                    if (lsink_create_one_per_27_cells) &
-                      call interpolate_quadratic(f,ipotself,ipotself, &
-                          fp(k,ixp:izp),gpotself_interp,ineargrid(k,:),iblock,ipar(k))
                   endif
                 else
                   rhop_interp=fb(ix0,iy0,iz0,irhop:irhop,iblock)
-                  if (lsink_create_one_per_27_cells) &
-                    gpotself_interp=fb(ix0,iy0,iz0,ipotself:ipotself,iblock)
                 endif
                 if (lsink_create_one_per_cell) rhoc = max(rhop_sink_create, srhop(ix0,iy0,iz0))
                 creatb: if (rhop_interp(1) >= rhoc) then
@@ -358,26 +321,11 @@ module Particles_sink
                     print*, 'iproc, it, itsub, xp     =', &
                         iproc, it, itsub, fp(k,ixp:izp)
                   endif
-                  if (.not. lsink_create_one_per_27_cells) fp(k,iaps)=sink_radius
+                  fp(k,iaps)=sink_radius
                   recb: if (lsink_create_one_per_cell) then
                     if (sid(ix0,iy0,iz0) > 0) fp(sid(ix0,iy0,iz0),iaps) = 0.0
                     sid(ix0,iy0,iz0) = k
                     srhop(ix0,iy0,iz0) = rhop_interp(1)
-!
-! Check if this particle represents the local minimum of the gravitational
-! potential both with respect to the other particles in this cell and the
-! 26 neighbour cells.
-!
-                  elseif (lsink_create_one_per_27_cells) then
-                    if ((fb(ix0,iy0,iz0,ipotself,iblock) == &
-                        minval(fb(ix0-1:ix0+1,iy0-1:iy0+1,iz0-1:iz0+1,ipotself,iblock))) &
-                        .and. (gpotself_interp(1) < sgpotself(ix0,iy0,iz0))) then
-                      fp(k,iaps)=sink_radius
-                      if (sid(ix0,iy0,iz0) > 0) fp(sid(ix0,iy0,iz0),iaps) = 0.0
-                      sid(ix0,iy0,iz0) = k
-                      sgpotself(ix0,iy0,iz0) = gpotself_interp(1)
-                    endif
-!
                   endif recb
                 endif creatb
 !
@@ -404,27 +352,16 @@ module Particles_sink
                 if (lparticlemesh_cic) then
                   call interpolate_linear(f,irhop,irhop, &
                       fp(k,ixp:izp),rhop_interp,ineargrid(k,:),0,ipar(k))
-                  if (lsink_create_one_per_27_cells) &
-                    call interpolate_linear(f,ipotself,ipotself, &
-                        fp(k,ixp:izp),gpotself_interp,ineargrid(k,:),0,ipar(k))
                 elseif (lparticlemesh_tsc) then
                   if (linterpolate_spline) then
                     call interpolate_quadratic_spline(f,irhop,irhop, &
                         fp(k,ixp:izp),rhop_interp,ineargrid(k,:),0,ipar(k))
-                      if (lsink_create_one_per_27_cells) &
-                        call interpolate_quadratic_spline(f,ipotself,ipotself, &
-                            fp(k,ixp:izp),gpotself_interp,ineargrid(k,:),0,ipar(k))
                   else
                     call interpolate_quadratic(f,irhop,irhop, &
                         fp(k,ixp:izp),rhop_interp,ineargrid(k,:),0,ipar(k))
-                    if (lsink_create_one_per_27_cells) &
-                      call interpolate_quadratic(f,ipotself,ipotself, &
-                          fp(k,ixp:izp),gpotself_interp,ineargrid(k,:),0,ipar(k))
                   endif
                 else
                   rhop_interp=f(ix0,iy0,iz0,irhop:irhop)
-                  if (lsink_create_one_per_27_cells) &
-                    gpotself_interp=f(ix0,iy0,iz0,ipotself:ipotself)
                 endif
                 if (lsink_create_one_per_cell) rhoc = max(rhop_sink_create, srhop(ix0,iy0,iz0))
                 creat: if (rhop_interp(1) >= rhoc) then
@@ -433,26 +370,11 @@ module Particles_sink
                         'sink particle with rhop=', rhop_interp(1)
                     print*, 'processor, position=', iproc, fp(k,ixp:izp)
                   endif
-                  if (.not. lsink_create_one_per_27_cells) fp(k,iaps)=sink_radius
+                  fp(k,iaps)=sink_radius
                   record: if (lsink_create_one_per_cell) then
                     if (sid(ix0,iy0,iz0) > 0) fp(sid(ix0,iy0,iz0),iaps) = 0.0
                     sid(ix0,iy0,iz0) = k
                     srhop(ix0,iy0,iz0) = rhop_interp(1)
-!
-! Check if this particle represents the local minimum of the gravitational
-! potential both with respect to the other particles in this cell and the
-! 26 neighbour cells.
-!
-                  elseif (lsink_create_one_per_27_cells) then
-                    if ((f(ix0,iy0,iz0,ipotself) == &
-                        minval(f(ix0-1:ix0+1,iy0-1:iy0+1,iz0-1:iz0+1,ipotself))) &
-                        .and. (gpotself_interp(1) < sgpotself(ix0,iy0,iz0))) then
-                      fp(k,iaps)=sink_radius
-                      if (sid(ix0,iy0,iz0) > 0) fp(sid(ix0,iy0,iz0),iaps) = 0.0
-                      sid(ix0,iy0,iz0) = k
-                      sgpotself(ix0,iy0,iz0) = gpotself_interp(1)
-                    endif
-!
                   endif record
                 endif creat
                 if (ldiagnos.and.idiag_rhopinterp/=0) &

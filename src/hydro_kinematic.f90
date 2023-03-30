@@ -102,7 +102,7 @@ module Hydro
   real :: binary_radius=0., radius_kinflow=0., width_kinflow=0.
   real :: power1_kinflow=4., power2_kinflow=-5./3., kgaussian_uu=0., kpeak_kinflow=3., cutoff=1e9
   real :: cs21_kinflow=1.
-  integer :: kinflow_ck_ell=0, tree_lmax=8, kappa_kinflow=100, smooth_width=0   !nghost
+  integer :: kinflow_ck_ell=0, tree_lmax=8, kappa_kinflow=100, smooth_width=3
   character (len=labellen) :: wind_profile='none'
   logical, target :: lpressuregradient_gas=.false.
   logical :: lkinflow_as_comaux=.false.
@@ -140,7 +140,7 @@ module Hydro
   integer :: idiag_uxuym=0,idiag_uxuzm=0,idiag_uyuzm=0,idiag_oumphi=0
   integer :: idiag_ruxm=0,idiag_ruym=0,idiag_ruzm=0,idiag_rumax=0
   integer :: idiag_uxmz=0,idiag_uymz=0,idiag_uzmz=0,idiag_umx=0
-  integer :: idiag_umy=0,idiag_umz=0
+  integer :: idiag_umy=0,idiag_umz=0,idiag_uxmxy=0,idiag_uymxy=0,idiag_uzmxy=0
   integer :: idiag_Marms=0,idiag_Mamax=0,idiag_divu2m=0,idiag_epsK=0
   integer :: idiag_urmphi=0,idiag_upmphi=0,idiag_uzmphi=0,idiag_u2mphi=0
   integer :: idiag_phase1=0,idiag_phase2=0
@@ -150,7 +150,7 @@ module Hydro
   integer :: idiag_oxurms=0     ! DIAG_DOC: $\left<(\boldsymbol{\omega}\times\uv)^2\right>^{1/2}$
   integer :: idiag_EEK=0        ! DIAG_DOC: $\left<\varrho\uv^2\right>/2$
 !  
-  integer :: idiag_oumxy=0,idiag_uxmxy=0,idiag_uymxy=0,idiag_uzmxy=0
+  integer :: idiag_oumxy=0
 !
 !  Video data.
 !
@@ -199,7 +199,7 @@ module Hydro
 !                  also oscillating with omega_kinflow
 !
       use FArrayManager
-      use Sub, only: erfunc, ylm, ylm_other, smoothing_kernel, smooth
+      use Sub, only: erfunc, ylm, ylm_other, smoothing_kernel
       use Boundcond, only: update_ghosts
       use General
       use Mpicomm
@@ -357,9 +357,9 @@ module Hydro
           if (.not.lreloading) then
             call initialize_foreign_comm(frgn_buffer) 
             if (smooth_width>0) then 
-             ! smooth_width = min(smooth_width, nghost)
-             ! allocate(smooth_factor(-smooth_width:smooth_width,-smooth_width:smooth_width,-smooth_width:smooth_width))
-             ! call smoothing_kernel(smooth_factor,lgaussian=.true., smth_wid=smooth_width)
+              smooth_width = min(smooth_width, nghost)
+              allocate(smooth_factor(-smooth_width:smooth_width,-smooth_width:smooth_width,-smooth_width:smooth_width))
+              call smoothing_kernel(smooth_factor,lgaussian=.true., smth_wid=smooth_width)
             endif
 !
 !  Initially, take two snapshots.
@@ -369,26 +369,25 @@ module Hydro
             if (.not.allocated(uu_2)) allocate(uu_2(mx,my,mz,3))
 !print *, 'PENCIL UU2EVAL', iproc,nx, ny, ny,  size(uu_2, 1)
             call get_foreign_snap_finalize(f,iux,iuz,frgn_buffer,interp_buffer)   !,lnonblock=.true.)
-            !if (smooth_width > 0) call smooth_velocity(f,iux,iuz,smooth_factor)
-            if (smooth_width > 0) call smooth(f,iux,iuz,smooth_width_=smooth_width)
+            if (smooth_width > 0) call smooth_velocity(f,iux,iuz)
 !print*, 'Pencil successful get_foreign_snap_finalize 1', iproc
 !if (lroot) print*, 'PENCIL FMAX INIT' , maxval(abs(f(l1:l2,m1:m2,n1:n2,iux:iuz)))
 !print*, 'PENCIL FMAX INIT' , iproc, maxval(abs(f(l1:l2,m1:m2,n1:n2,iux:iuz)))
             call get_foreign_snap_initiate(3,frgn_buffer,lnonblock=.false.)!!!true
-            call get_foreign_snap_finalize(uu_2,1,3,frgn_buffer,interp_buffer)  !,lnonblock=.true.)
-            if (smooth_width > 0) call smooth(uu_2,1,3,smooth_width_=smooth_width)
+            call get_foreign_snap_finalize(uu_2,1,3,frgn_buffer,interp_buffer,lnonblock=.false.)!!!true
+            if (smooth_width > 0) call smooth_velocity(uu_2, 1,3)  
 !print*, 'Pencil successful get_foreign_snap_finalize 2', iproc
 !        
 ! prepare receiving next snapshot
 !       
-            call get_foreign_snap_initiate(3,frgn_buffer)    !,lnonblock=.true.)
+            call get_foreign_snap_initiate(3,frgn_buffer,lnonblock=.false.)!!!true
 !print*, 'Pencil successful', iproc
 !print*, 'PBARRIER',iproc
 !        call mpibarrier(MPI_COMM_UNIVERSE)
 !call mpifinalize
 !stop
           endif
-        else
+       else
           call fatal_error("initialize_hydro", "No foreign code available")
         endif
       endif
@@ -396,21 +395,19 @@ module Hydro
 !
     endsubroutine initialize_hydro
 !***********************************************************************
-    subroutine smooth_velocity(f,iu1,iu2,smooth_factor)
+    subroutine smooth_velocity(f,iu1, iu2)
 
       use Boundcond, only: boundconds_x, boundconds_y, boundconds_z
       
       real, dimension(:,:,:,:) :: f
-      real, dimension(:,:,:) :: smooth_factor
       integer :: iu1, iu2
 
       real, dimension(mx,my,mz,3) :: tmp
       real, dimension(nx, 3) :: penc
-      integer :: ni, nj, nk, imn, i, j, k, smooth_width
+      integer :: ni, nj, nk, imn, i, j, k
 !
 !  Smooth with a Gaussian profile
 !
-      smooth_width=(size(smooth_factor,1)-1)/2
       ni = merge(smooth_width,0,nxgrid > 1)
       nj = merge(smooth_width,0,nygrid > 1)
       nk = merge(smooth_width,0,nzgrid > 1)
@@ -450,7 +447,9 @@ module Hydro
         enddo
         enddo
 !
-        tmp(l1:l2,m,n,:) = penc
+        do j=1,3
+          tmp(l1:l2,m,n,j) = penc(:,j)
+        enddo
 !
       enddo
       f(:,:,:,iu1:iu2) = tmp
@@ -504,10 +503,14 @@ module Hydro
 !
         headtt=headtt_save
 
-        if (lcalc_uumeanz ) call finalize_aver(nprocxy,12,uumz)
-        if (lcalc_uumeanx ) call finalize_aver(nprocyz,23,uumx)
-        if (lcalc_uumeanxy) call finalize_aver(nprocz,3,uumxy)
-        if (lcalc_uumeanxz) call finalize_aver(nprocy,2,uumxz)
+        if (lcalc_uumeanz ) &
+          call finalize_aver(nprocxy,12,uumz)
+        if (lcalc_uumeanx ) &
+          call finalize_aver(nprocyz,23,uumx)
+        if (lcalc_uumeanxy) &
+          call finalize_aver(nprocz,3,uumxy)
+        if (lcalc_uumeanxz) &
+          call finalize_aver(nprocy,2,uumxz)
 !
       endif
 !
@@ -1088,7 +1091,7 @@ module Hydro
         endif
         if (lpenc_loc(i_divu)) p%divu=0.
 !
-!  z-dependent Roberts flow I (positive helicity)
+!  z-dependent Roberts flow (positive helicity)
 !
       case ('zdep-roberts')
         if (headtt) print*,'z-dependent Roberts flow; kx,ky=',kx_uukin,ky_uukin
@@ -1106,27 +1109,6 @@ module Hydro
           p%uu(:,2)=+sin(kx_uukin*x(l1:l2))*cos(ky_uukin*y(m)) &
               -dfpara*cos(kx_uukin*x(l1:l2))*sin(ky_uukin*y(m))*sqrt21k1
           p%uu(:,3)=+fpara*cos(kx_uukin*x(l1:l2))*cos(ky_uukin*y(m))*sqrt2
-        endif
-        if (lpenc_loc(i_divu)) p%divu=0.
-!
-!  z-dependent Roberts flow II (positive helicity)
-!
-      case ('zdep-roberts-II')
-        if (headtt) print*,'z-dependent Roberts flow; kx,ky=',kx_uukin,ky_uukin
-        fpara=ampl_kinflow*(quintic_step(z(n),-1.+eps_kinflow,eps_kinflow) &
-            -quintic_step(z(n),+1.-eps_kinflow,eps_kinflow))
-        dfpara=ampl_kinflow*(quintic_der_step(z(n),-1.+eps_kinflow,eps_kinflow)&
-            -quintic_der_step(z(n),+1.-eps_kinflow,eps_kinflow))
-!
-        sqrt2=sqrt(2.)
-        sqrt21k1=1./(sqrt2*kx_uukin)
-! uu
-        if (lpenc_loc(i_uu)) then
-          p%uu(:,1)=-fpara*cos(kx_uukin*x(l1:l2))*sin(ky_uukin*y(m)) &
-                   +dfpara*cos(kx_uukin*x(l1:l2))*sin(ky_uukin*y(m))*sqrt21k1
-          p%uu(:,2)=+fpara*sin(kx_uukin*x(l1:l2))*cos(ky_uukin*y(m)) &
-                   +dfpara*sin(kx_uukin*x(l1:l2))*cos(ky_uukin*y(m))*sqrt21k1
-          p%uu(:,3)=+fpara*sin(kx_uukin*x(l1:l2))*sin(ky_uukin*y(m))*sqrt2
         endif
         if (lpenc_loc(i_divu)) p%divu=0.
 !
@@ -2593,14 +2575,11 @@ module Hydro
 !   16-dec-10/bing: coded
 !
       use Mpicomm, only: update_foreign_data
-      use Sub, only: smooth
 !
       real, dimension (mx,my,mz,mfarray), intent(inout) :: f
 !
       real :: fac
       real, save :: t_foreign=0.
-!
-!  Do global, time-dependent flow calculations here:
 !
       if (kinematic_flow=='from-foreign-snap') then
         if (lfirst) then
@@ -2608,7 +2587,7 @@ module Hydro
           if (update_foreign_data(t,t_foreign)) then
             f(:,:,:,iux:iuz) = uu_2
             call get_foreign_snap_finalize(uu_2,1,3,frgn_buffer,interp_buffer,lnonblock=.false.)!!!true
-            if (smooth_width > 0) call smooth(f,iux,iuz,smooth_width_=smooth_width)
+            if (smooth_width > 0) call smooth_velocity(uu_2,1,3)
             call get_foreign_snap_initiate(3,frgn_buffer,lnonblock=.false.)!!!true
           endif
         endif
@@ -2620,8 +2599,11 @@ module Hydro
         endif
         f(:,:,:,iux:iuz) = (1.-fac)*f(:,:,:,iux:iuz) + fac*uu_2
 !print*, 'PENCIL FMAX' , iproc, maxval(abs(f(:,:,:,iux:iuz)))
+      endif
 !
-      elseif (kinematic_flow=='sound3D') then
+!  Do global, time-dependent flows calculations here:
+!
+      if (kinematic_flow=='sound3D') then
         call sound3D(f)
       endif
 !
@@ -2680,9 +2662,6 @@ module Hydro
       endif
       if (l2davgfirst) then     
         call zsum_mn_name_xy(p%ou,idiag_oumxy)
-        call zsum_mn_name_xy(p%uu(:,1),idiag_uxmxy)
-        call zsum_mn_name_xy(p%uu(:,2),idiag_uymxy)
-        call zsum_mn_name_xy(p%uu(:,3),idiag_uzmxy)
       endif
 !  store slices for output in wvid in run.f90
 !  This must be done outside the diagnostics loop (accessed at different times).
@@ -3381,7 +3360,7 @@ module Hydro
         idiag_urmphi=0; idiag_upmphi=0; idiag_uzmphi=0; idiag_u2mphi=0
         idiag_EEK=0; idiag_ekin=0; idiag_ekintot=0
         idiag_divum=0
-        idiag_oumxy=0;idiag_uxmxy=0;idiag_uymxy=0;idiag_uzmxy=0
+        idiag_oumxy=0
         ivid_uu=0
       endif
 !
@@ -3430,11 +3409,8 @@ module Hydro
         call parse_name(iname,cname(iname),cform(iname),'phase2',idiag_phase2)
       enddo
       do ixy=1,nnamexy
-        call parse_name(ixy,cnamexy(ixy),cformxy(ixy),'oumxy',idiag_oumxy)
-        call parse_name(ixy,cnamexy(ixy),cformxy(ixy),'uxmxy',idiag_uxmxy)
-        call parse_name(ixy,cnamexy(ixy),cformxy(ixy),'uymxy',idiag_uymxy)
-        call parse_name(ixy,cnamexy(ixy),cformxy(ixy),'uzmxy',idiag_uzmxy)
-     enddo
+      call parse_name(ixy,cnamexy(ixy),cformxy(ixy),'oumxy',idiag_oumxy)
+      enddo
 !
 !  check for those quantities for which we want video slices
 !
@@ -3790,5 +3766,10 @@ module Hydro
           qirro=qirro_kinflow, time=real(t), cs=1./sqrt(cs21_kinflow))
 !
     endsubroutine sound3D
+!***********************************************************************
+    subroutine copyin_hydro()
+!  30-mar-23/TP: subroutine for copying in required threadprivate variables.
+!                No test case if this module needs specific variables copied in. Here to keep the compiler happy 
+    endsubroutine copyin_hydro
 !***********************************************************************
 endmodule Hydro

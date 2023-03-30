@@ -403,7 +403,9 @@
 !
       do i=1,n_special_modules
         !call caller(special_sub_handles(i,modind),3,f,df,p)
+
         call caller3(special_sub_handles(i,modind),f,df,p)
+     
       enddo
 !
     endsubroutine special_calc_3par
@@ -421,6 +423,7 @@
       type (pencil_case), intent(in) :: p
 
       call special_calc_3par(f,df,p,I_SPECIAL_CALC_HYDRO)
+
 
     endsubroutine special_calc_hydro
 !***********************************************************************

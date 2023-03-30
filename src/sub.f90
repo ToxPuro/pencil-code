@@ -349,6 +349,9 @@ module Sub
  2.21580e-07,9.14337e-06,2.69243e-05,9.14337e-06, 2.21580e-07, 9.07894e-11, 5.03438e-15, 9.07894e-11, 1.24384e-08, 5.46411e-08,&
  1.24384e-08,9.07894e-11,5.03438e-15 /), (/ 7, 7, 7 /))
 !
+!TP made save variables threadprivate module variables
+integer :: indr=0, indth=0
+!$omp threadprivate(indr,indth)
   contains
 !
 !***********************************************************************
@@ -1611,7 +1614,6 @@ module Sub
 !
       integer :: k1,i
       real, dimension(nx) :: tmp
-      integer, save :: indr=0, indth=0
       logical, save :: s0=.true.
 !
       k1=k-1

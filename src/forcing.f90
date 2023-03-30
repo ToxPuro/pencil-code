@@ -199,6 +199,7 @@ module Forcing
   real, allocatable, dimension (:) :: KS_omega !or through whole field for each wavenumber?
   integer :: KS_modes = 25
 !
+!$omp threadprivate(theta_TG,phi1_ff,phi2_ff,sinxt,cosxt,sinyt,cosyt,sinzt,coszt)
   contains
 !
 !***********************************************************************

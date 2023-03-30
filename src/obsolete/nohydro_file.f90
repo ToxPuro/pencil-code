@@ -281,5 +281,12 @@ module Hydro
 !
     endsubroutine calc_mflow
 !***********************************************************************
+    subroutine copyin_hydro()
+!  30-mar-23/TP: subroutine for copying in required threadprivate variables.
+!                No test case if this module needs specific variables copied in. Here to keep the compiler happy 
+
+    endsubroutine copyin_hydro
+!***********************************************************************
+
 
 endmodule Hydro

@@ -82,11 +82,11 @@ module InitialCondition
 !
   include '../initial_condition.h'
   real :: l0_d, l_d1, psipn0, psipn1, psi0, psi1, lnrho0_c
-  real :: m0, r0_d, rs=1.0, apara, h_d, dsteep, ngamma, &
-          rho0_c, cs0_c, Tc, rpos
+  real :: m0, r0_d=40.0, rs=1.0, apara, h_d, dsteep, ngamma, rho0_c, cs0_c, Tc
+  logical :: luse_only_botbdry=.false.
 !
-  namelist /initial_condition_pars/ r0_d, apara, & 
-  h_d, rho0_c, dsteep, ngamma, cs0_c, Tc, rpos
+  namelist /initial_condition_pars/ m0, r0_d, rs, apara, h_d, &
+  dsteep, ngamma, rho0_c, cs0_c, Tc
 !
   contains
 !***********************************************************************
@@ -97,7 +97,7 @@ module InitialCondition
 !  07-may-09/wlad: coded
 !
       if (lroot) call svn_id( &
-          "$Id$")
+         "$Id$")
 !
     endsubroutine register_initial_condition
 !***********************************************************************
@@ -113,6 +113,29 @@ module InitialCondition
 !
     endsubroutine initialize_initial_condition
 !***********************************************************************
+    subroutine initial_condition_all(f,profiles)
+!
+!  Initializes all the f arrays in one call.  This subroutine is called last.
+!
+!  21-dec-10/ccyang: coded
+!  15-feb-15/MR: optional parameter 'profiles' added
+!
+      use Messages, only: fatal_error
+!
+      real, dimension (mx,my,mz,mfarray), optional, intent(inout):: f
+      real, dimension (:,:),              optional, intent(out)  :: profiles
+!
+!  SAMPLE IMPLEMENTATION
+!
+      call keep_compiler_quiet(f)
+      if (present(profiles)) then
+        call fatal_error('initial_condition_all', &
+          'If profiles are asked for, a real initial condition must be specified')
+        call keep_compiler_quiet(profiles)
+      endif
+!
+    endsubroutine initial_condition_all
+!***********************************************************************
     subroutine initial_condition_uu(f)
 !
 !  Initialize the velocity field.
@@ -120,14 +143,40 @@ module InitialCondition
 !  07-may-09/wlad: coded
 
 !  /mayank
+
+      use Sub,            only: get_radial_distance
+      use SharedVariables, only: get_shared_variable
+      
       real, dimension (mx,my,mz,mfarray), intent(inout) :: f
-!      
-      call keep_compiler_quiet(f)
+      real, dimension (mx) :: rr_sph,rr_cyl,g_r
+      real, dimension (mx) :: vphi_d, l_d
+      real :: m00
+      real, pointer :: g0
+
+      call get_shared_variable('g0',g0)
+      m00=(g0/G_Newton)
+      l0_d=sqrt(g0*r0_d**3.0)/(r0_d-rs)
+
+      do m=m1, m2;do n=n1, n2
+          call get_radial_distance(rr_sph,rr_cyl) 
+
+! Specific angular momentum
+
+      l_d=l0_d*((rr_cyl)/r0_d)**apara
+
+! azimuthal velocity. The value of loop variable 'n' has been used as the z coordinate.
+      
+      vphi_d=(1.0-tanh(abs(z(n)/h_d))**dsteep)*tanh(abs(rr_sph/rs)**dsteep)*l_d/(rr_cyl)
+      f(:,m,n,iuz) =  vphi_d     
+      enddo;enddo
+
+!  SAMPLE IMPLEMENTATION
+!
+!      call keep_compiler_quiet(f)
 !
     endsubroutine initial_condition_uu
 !***********************************************************************
-
-    subroutine initial_condition_all(f,profiles)
+    subroutine initial_condition_lnrho(f)
 !
 !  Initialize logarithmic density. init_lnrho will take care of
 !  converting it to linear density if you use ldensity_nolog.
@@ -136,127 +185,65 @@ module InitialCondition
 
 !/mayank
 
-      use Mpicomm, only: mpibcast
       use EquationOfState, only: get_cp1, cs0, cs20, cs2bot, cs2top, rho0, lnrho0, &
                              gamma, gamma1, gamma_m1
       use FArrayManager,   only: farray_use_global
-      use Sub,             only: get_radial_distance, location_in_proc
+      use Sub,             only: get_radial_distance
       use SharedVariables, only: get_shared_variable
 
-      real, dimension (mx,my,mz,mfarray), optional, intent(inout):: f
-      real, dimension (:,:),              optional, intent(out)  :: profiles
-      real, dimension (mx, my, mz) :: psi, masked, xmesh, tmasked
-      real, dimension (mx) :: rr_sph, rr_cyl
-      real, dimension (nx) :: rho_d, lnrho_c, psipn, l_d, vphi_d, lnT_d
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+      real, dimension (mx) :: rr_sph,rr_cyl
+      real, dimension (mx) :: lnrho_d, lnrho_c, psipn, psi, l_d
       real, pointer :: g0
       real :: cp1, m00
-      integer :: lpos, mpos, npos, procno,procnomax
 
-! Some constants
+!Some constants
 
-      call get_shared_variable('g0',g0)
       lnrho0_c=log(rho0_c)
-      rs=2*g0/c_light**2
-      l0_d=sqrt(g0*r0_d**3.0)/(r0_d-rs)
+      l0_d=sqrt(G_Newton*m0*r0_d**3.0)/(r0_d-rs)
       l_d1=l0_d*(2.0*rs/r0_d)**apara
-      psipn0=-g0/(r0_d-rs)
-      psipn1=-g0/rs
-!      psi0=psipn0+1.0/(2.0-2.0*apara)*(l0_d/r0_d)**2.0
+      psipn0=-(G_Newton*m0)/(r0_d-rs)
+      psipn1=-G_Newton*m0/rs
+      psi0=psipn0+1.0/(2.0-2.0*apara)*(l0_d/(r0_d))**2.0
       psi1=psipn1+1.0/(2.0-2.0*apara)*(l_d1/(2.0*rs))**2.0
 !    
       call get_cp1(cp1) 
+      call get_shared_variable('g0',g0)
       m00=(g0/G_Newton)
       do n=n1,n2
         do m=m1,m2
-          xmesh(:,m,n)=x
           call get_radial_distance(rr_sph,rr_cyl)
 !
 ! Specific angular momentum
 !        
-          l_d=l0_d*(rr_cyl(l1:l2)/r0_d)**apara
+          l_d=l0_d*((rr_cyl)/r0_d)**apara
 !       
-! Pseudo-Newtonian potential
+!Pseudo-Newtonian potential
 !        
-        psipn=-g0/sqrt((rr_sph(l1:l2)-rs)**2+(1e-3*rs)**2)
+        psipn=-g0/sqrt((rr_sph-rs)**2+(1e-3*rs)**2)
 
 ! Gravitational Potential for the system
         
-        psi(l1:l2,m,n)=psipn+1.0/(2.0-2.0*apara)*(l_d/(sqrt(rr_cyl(l1:l2)**2+(1e-3*rs)**2)))**2.0
-        enddo
-      enddo
-      if (location_in_proc((/rpos,xyz0(2), 0.0/),lpos,mpos,npos)) then
-          psi0=psi(lpos,mpos,npos)
-          procno=iproc
-          print*, psi0, x(lpos),procno
-      else
-          procno=-100 
-      endif
-!
-! The following is a hack as procno is not set for other processors
-!
-      call find_procno(procno,procnomax)
-      call mpibcast(psi0,procnomax)
-      print*, iproc, procnomax, psi0
-      mask: where ((-(psi-psi0) .gt. 0.0) .and. (abs(xmesh) .gt. rpos))
-               masked=1.0
-             elsewhere
-               masked=0.0
-            end where mask
-!
-      mask2: where ((-(psi-psi0) .gt. 0.0) .and. (abs(xmesh) .gt. rpos))
-               tmasked=0.0
-             elsewhere
-               tmasked=1.0
-            end where mask2
-!
-      do n=n1,n2
-        do m=m1,m2
-          call get_radial_distance(rr_sph,rr_cyl)
-!
-! Specific angular momentum
-!
-          l_d=l0_d*(rr_cyl(l1:l2)/r0_d)**apara
-!
-! Pseudo-Newtonian potential
-!
-        psipn=-g0/sqrt((rr_sph(l1:l2)-rs)**2+(1e-3*rs)**2)
+        psi=psipn+1.0/(2.0-2.0*apara)*(l_d/(rr_cyl))**2.0
 
 !  Disk Density
         
-        rho_d=exp(lnrho0)*(1.0-gamma*masked(l1:l2,m,n)*(psi(l1:l2,m,n)-psi0)/(cs0**2*(ngamma+1.0)))**ngamma
-        
+        lnrho_d=ngamma*log(abs(1.0-gamma*(psi-psi0)/(cs0*(ngamma+1.0))))+lnrho0
+          print*, psi0, g0, psi
+
 ! Corona Density
-        lnrho_c=lnrho0_c-(psipn-psipn1)*gamma/cs0_c**2
-        f(l1:l2,m,n,ilnrho) = log(rho_d+exp(lnrho_c))
-        vphi_d=l_d*x(l1:l2)/(rr_cyl(l1:l2)**2+(1e-3*rs)**2)*masked(l1:l2,m,n) 
-        f(l1:l2,m,n,iuy) = vphi_d  
-        lnT_d=(log(rho_d)-lnrho0)/ngamma+log(cs0**2.0/(gamma_m1/cp1))
-        f(l1:l2,m,n,ilnTT)=log(exp(lnT_d)+Tc*tmasked(l1:l2,m,n))
+        
+        lnrho_c=lnrho0_c-(psipn-psipn1)*gamma/cs0_c
+        f(:,m,n,ilnrho) = lnrho_d+lnrho_c
+        
         enddo
       enddo
+
+!  SAMPLE IMPLEMENTATION
 !
+!      call keep_compiler_quiet(f)
 !
-    endsubroutine initial_condition_all
-!***********************************************************************
-    subroutine find_procno(procno,procnomax)
-!
-!  Find the absolute maximum of the velocity.
-!
-!  13-sep-2023/piyali: adapted from find_umax
-!
-      use Mpicomm, only: mpiallreduce_max, MPI_COMM_WORLD
-!
-      integer, intent(in) :: procno
-      integer, intent(out) :: procnomax
-!
-      integer :: procno1
-!
-!  Find the maximum.
-!
-      procno1 = procno
-      call mpiallreduce_max(procno1, procnomax, comm=MPI_COMM_WORLD)
-!
-    endsubroutine find_procno
+    endsubroutine initial_condition_lnrho
 !***********************************************************************
     subroutine initial_condition_ss(f)
 !
@@ -265,35 +252,34 @@ module InitialCondition
 !  07-may-09/wlad: coded
 
 !/mayank
-      !use Mpicomm, only: mpibcast
-      !use EquationOfState, only: get_cp1, cs0, cs20, cs2bot, cs2top, rho0, lnrho0, &
-                             !gamma, gamma1, gamma_m1
-!      use FArrayManager,   only: farray_use_global
-!      use Sub,             only: get_radial_distance, location_in_proc, smooth
-!      use SharedVariables, only: get_shared_variable
 
+      use FArrayManager,   only: farray_use_global
+      use EquationOfState, only: get_cp1, cs0, cs20, cs2bot, cs2top, rho0, lnrho0, &
+                             gamma, gamma1, gamma_m1
+      
       real, dimension (mx,my,mz,mfarray), intent(inout) :: f
- !     real, dimension (mx, my, mz) :: psi, xmesh, masked, tmasked
-  !    real, dimension (mx) :: rr_sph, rr_cyl
-   !   real, dimension (nx) :: rho_d, psipn, l_d, lnT_d
-    !  real, pointer :: g0
-     ! real :: cp1
-      !integer :: lpos, mpos, npos
+      real, dimension (mx) :: lnT_d, lnT_c
+      real, dimension (mx) :: lnrho_d
+      real :: cp1
 
-      !call get_shared_variable('g0',g0)
-      !lnrho0_c=log(rho0_c)
-      !rs=2*g0/c_light**2
-      !l0_d=sqrt(g0*r0_d**3.0)/(r0_d-rs)
-!      l_d1=l0_d*(2.0*rs/r0_d)**aparan=n1,n2
-        !do m=m1,m2
+      call get_cp1(cp1)
+      do n=n1,n2
+        do m=m1,m2
+        lnrho_d= f(:,m,n,ilnrho)
 
-        !rho_d=exp(lnrho0)*(1.0-gamma*masked(l1:l2,m,n)*(psi(l1:l2,m,n)-psi0)/(cs0**2*(ngamma+1.0)))**ngamma
-        !lnT_d=(log(rho_d)-lnrho0)/ngamma+log(cs0**2.0/(gamma_m1/cp1))
-        !f(l1:l2,m,n,ilnTT)=log(exp(lnT_d)+Tc*tmasked(l1:l2,m,n))
+! Disk Temperature
 
-       ! enddo
-      !enddo
-         call keep_compiler_quiet(f)
+      lnT_d=(lnrho_d-lnrho0)/ngamma+log(cs0/(gamma_m1/cp1))
+      f(:,m,n,ilnTT) = lnT_d
+      
+      end do
+     end do
+!Corona Temperature is constant. Defined in initial_condition_pars as 'Tc'.
+
+!  SAMPLE IMPLEMENTATION
+!
+!      call keep_compiler_quiet(f)
+!
     endsubroutine initial_condition_ss
 !***********************************************************************
     subroutine initial_condition_aa(f)
@@ -310,13 +296,201 @@ module InitialCondition
 !
     endsubroutine initial_condition_aa
 !***********************************************************************
+    subroutine initial_condition_aatest(f)
+!
+!  Initialize testfield.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_aatest
+!***********************************************************************
+    subroutine initial_condition_uutest(f)
+!
+!  Initialize testflow.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_uutest
+!***********************************************************************
+    subroutine initial_condition_lncc(f)
+!
+!  Initialize passive scalar.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_lncc
+!***********************************************************************
+    subroutine initial_condition_chiral(f)
+!
+!  Initialize chiral.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_chiral
+!***********************************************************************
+    subroutine initial_condition_chemistry(f)
+!
+!  Initialize chemistry.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_chemistry
+!***********************************************************************
+    subroutine initial_condition_uud(f)
+!
+!  Initialize dust fluid velocity.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_uud
+!***********************************************************************
+    subroutine initial_condition_nd(f)
+!
+!  Initialize dust fluid density.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_nd
+!***********************************************************************
+    subroutine initial_condition_uun(f)
+!
+!  Initialize neutral fluid velocity.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_uun
+!***********************************************************************
+    subroutine initial_condition_lnrhon(f)
+!
+!  Initialize neutral fluid density.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_lnrhon
+!***********************************************************************
+    subroutine initial_condition_ecr(f)
+!
+!  Initialize cosmic rays.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_ecr
+!***********************************************************************
+    subroutine initial_condition_fcr(f)
+!
+!  Initialize cosmic ray flux.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_fcr
+!***********************************************************************
+    subroutine initial_condition_solid_cells(f)
+!
+!  Initialize solid cells.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_solid_cells
+!***********************************************************************
+    subroutine initial_condition_cctest(f)
+!
+!  Initialize testscalar.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+!
+      call keep_compiler_quiet(f)
+!
+    endsubroutine initial_condition_cctest
+!***********************************************************************
+    subroutine initial_condition_xxp(f,fp)
+!
+!  Initialize particles' positions.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+      real, dimension (:,:), intent(inout) :: fp
+!
+      call keep_compiler_quiet(f)
+      call keep_compiler_quiet(fp)
+!
+    endsubroutine initial_condition_xxp
+!***********************************************************************
+    subroutine initial_condition_vvp(f,fp)
+!
+!  Initialize particles' velocities.
+!
+!  07-may-09/wlad: coded
+!
+      real, dimension (mx,my,mz,mfarray), intent(inout) :: f
+      real, dimension (:,:), intent(inout) :: fp
+!
+      call keep_compiler_quiet(f)
+      call keep_compiler_quiet(fp)
+!
+    endsubroutine initial_condition_vvp
+!***********************************************************************
     subroutine read_initial_condition_pars(iostat)
 !
       use File_io, only: parallel_unit
 !
       integer, intent(out) :: iostat
 !
-      read(parallel_unit, NML=initial_condition_pars, IOSTAT=iostat)
+      iostat = 0
+!
+      ! *** IMPORTANT: ***
+      ! If you use this as template, please uncomment the following line:
+      !read(parallel_unit, NML=initial_condition_pars, IOSTAT=iostat)
 !
     endsubroutine read_initial_condition_pars
 !***********************************************************************
@@ -324,18 +498,19 @@ module InitialCondition
 !
       integer, intent(in) :: unit
 !
-      write(unit, NML=initial_condition_pars)
+      call keep_compiler_quiet(unit)
+!
+      ! *** IMPORTANT: ***
+      ! If you use this as template, please uncomment the following line:
+      !write(unit, NML=initial_condition_pars)
 !
     endsubroutine write_initial_condition_pars
 !***********************************************************************
+    subroutine initial_condition_clean_up
 !
+!  04-may-11/dhruba: coded
+! dummy
+!
+    endsubroutine initial_condition_clean_up
 !********************************************************************
-!************        DO NOT DELETE THE FOLLOWING       **************
-!********************************************************************
-!**  This is an automatically generated include file that creates  **
-!**  copies dummy routines from noinitial_condition.f90 for any    **
-!**  InitialCondition routines not implemented in this file        **
-!**                                                                **
-    include '../initial_condition_dummies.inc'
-!********************************************************************!
 endmodule InitialCondition

@@ -5644,6 +5644,7 @@ endsubroutine pdf
       !
       !  obtain u_tmp and b_tmp
       !
+      
       do ivec=1,3
         if (sp=='Hm'.or.sp=='Hc') then
           u_tmp(:,:,:,ivec)=uuu(:,:,:,ivec)

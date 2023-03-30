@@ -16,9 +16,11 @@ module Deriv
 !
   private
 !
+  public :: der2_coef0, der2_coef2
   include 'deriv.h'
 !
   real :: der2_coef0, der2_coef1, der2_coef2, der2_coef3
+
 !
   contains
 !

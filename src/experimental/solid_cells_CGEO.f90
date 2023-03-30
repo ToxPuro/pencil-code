@@ -3323,7 +3323,7 @@
 !
 !  Reset cumulating quantities before calculations in first pencil
 !
-      if (imn == 1) then
+      if (lfirstpoint) then
         if (idiag_c_dragx /= 0 .or. idiag_c_dragy /= 0 .or. &
             idiag_c_dragz /= 0 .or. idiag_c_dragx_p /= 0 .or. &
             idiag_c_dragy_p /= 0 .or. idiag_c_dragz_p /= 0) then

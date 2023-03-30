@@ -145,7 +145,7 @@ module Hydro
   logical, pointer :: lffree
   logical :: lreflecteddy=.false.,louinit=.false.
   logical :: lskip_projection=.false.
-  logical :: lconservative=.false., lrelativistic=.false.
+  logical :: lconservative=.false., lrelativistic=.false., lcorr_zero_dt=.false.
   logical, pointer :: lrelativistic_eos
   logical :: lno_noise_uu=.false.
   logical :: llorentz_limiter=.false., full_3D=.false.
@@ -788,7 +788,10 @@ module Hydro
   real, dimension(3) :: Omegav=0.
   real, dimension(nx) :: Fmax,advec_uu=0.
   real :: t_vart=0.
-!$omp THREADPRIVATE(advec_uu)
+  !TP: had to made saved variable threadprivate for multithreading
+  real:: fade_fact, tau,last_t = -1.0
+!$omp threadprivate(advec_uu, fade_fact,tau,last_t,divu_xy,divu_xy2,divu_xy3,divu_xy4,divu_xz,&
+!$omp divu_xz2,divu_yz,lconservative,outest,othresh,othresh_scl,t_cor,t_vart)
 !
   real, dimension (nx) :: prof_amp1, prof_amp2
   real, dimension (mz) :: prof_amp3
@@ -796,6 +799,10 @@ module Hydro
   real, dimension (nz,3) :: uumz_prof
   real, dimension (nx,ny) :: omega_prof
 
+!$omp threadprivate(Fmax)
+!$omp threadprivate(uumz,ruumz,uumx,uumy,uumxy,ruumxy,uumxz,lpressuregradient_gas,PrRa,ruxm,ruym,ruzm,lgradu_as_aux)
+!TP: lcorr_zero_dt can't be save variable in function since needs to be threadprivate 
+!$omp threadprivate(novec,lcorr_zero_dt)
   contains
 !***********************************************************************
     subroutine register_hydro
@@ -3606,6 +3613,7 @@ module Hydro
 !  Calculate the vorticity field if required.
 !
       if (ioo /= 0) then
+      print*,"HI :)"
         do n = n1, n2
           do m = m1, m2
             call curl(f, iux, pv)
@@ -3782,6 +3790,7 @@ module Hydro
           endif
         endif
 !
+
         if (ldensity.and.lconservative) then
 !
 !  diagonals first
@@ -3861,20 +3870,24 @@ module Hydro
       endif
 !
 !  Coriolis force with in Cartesian domain with Omega=Omega(x)
-!
+
       if (lcoriolis_xdep) call coriolis_xdep(df,p)
 !
 !  Interface for your personal subroutines calls
-!
       if (lspecial) call special_calc_hydro(f,df,p)
+
+
 !
+
 ! calculate viscous force
 !
+
       if (lviscosity) call calc_viscous_force(df,p)
+
       if (lSGS_hydro) call calc_SGS_hydro_force(f,df,p)
 !
 !  ``uu/dx'' for timestep
-!
+
       if (lfirst.and.ldt.and.ladvection_velocity) then
         if (lmaximal_cdt) then
           advec_uu=max(abs(p%uu(:,1))*dline_1(:,1),&
@@ -3935,6 +3948,7 @@ module Hydro
 !  Damp motions in some regions for some time spans if desired.
 !  For geodynamo: addition of dampuint evaluation.
 !
+
       if (tdamp/=0.or.dampuext/=0.or.dampuint/=0) call udamping(f,df,p)
 !
 !  adding differential rotation via a frictional term
@@ -3991,7 +4005,6 @@ module Hydro
           Fmax=max(Fmax,ftot/ulev)
         enddo
       endif
-
       call calc_diagnostics_hydro(f,p)
 !
       call timing('duu_dt','finished',mnloop=.true.)
@@ -4004,6 +4017,7 @@ module Hydro
 !
       use Diagnostics
       use Sub, only: dot, dot2, cross
+      use omp_lib
 
       real, dimension(:,:,:,:) :: f
       type(pencil_case), intent(in) :: p
@@ -4015,7 +4029,7 @@ module Hydro
       real, dimension (nx) :: rmask
       real :: kx
       integer :: k
-      logical, save :: lcorr_zero_dt=.false.
+     
 !
 !  Calculate maxima and rms values for diagnostic purposes
 !
@@ -4049,6 +4063,7 @@ module Hydro
           fname(idiag_urmss)=fname_half(idiag_urmsh,2)
           itype_name(idiag_urmsn)=ilabel_sum_sqrt
           itype_name(idiag_urmss)=ilabel_sum_sqrt
+          print*,idiag_urmsh,idiag_urmss,idiag_urmsn
         endif
         if (idiag_urmsx/=0) call sum_mn_name(p%u2*xmask_hyd,idiag_urmsx,lsqrt=.true.)
         if (idiag_urmsz/=0) call sum_mn_name(p%u2*zmask_hyd(n-n1+1),idiag_urmsz,lsqrt=.true.)
@@ -4258,7 +4273,7 @@ module Hydro
         endif
 !
 !  <o.del2u>
-!
+!F
         if (idiag_odel2um/=0) then
           call dot(p%oo,p%del2u,odel2um)
           call sum_mn_name(odel2um,idiag_odel2um)
@@ -5708,7 +5723,7 @@ module Hydro
 !
       real, dimension (nx) :: pdamp,fint_work,fext_work
       real, dimension (nx,3) :: fint,fext
-      real, save :: tau, fade_fact, last_t = -1.0
+      
       integer :: i,j
 !
 !  warn about the damping term
@@ -6530,7 +6545,6 @@ module Hydro
         if (iuut==0) call stop_it("Cannot calculate outm if iuut==0")
       endif
       if (idiag_uotm/=0) then
-        if (ioot==0) call stop_it("Cannot calculate uotm if ioot==0")
       endif
 !
 !  Loop over spherical harmonic modes.
@@ -8214,5 +8228,12 @@ module Hydro
     call set_type(idiag_uzmax,lmax=.true.)
 
     endsubroutine pushdiags2c
+!***********************************************************************
+    subroutine copyin_hydro()
+!  30-mar-23/TP: subroutine for copying in required threadprivate variables.
+    !$omp parallel copyin(advec_uu, fade_fact,tau,last_t,divu_xy,divu_xy2,divu_xy3,divu_xy4,divu_xz,&
+    !$omp divu_xz2,divu_yz,lconservative,outest,othresh,othresh_scl,t_cor,t_vart)
+    !$omp end parallel
+    endsubroutine copyin_hydro
 !***********************************************************************
 endmodule Hydro

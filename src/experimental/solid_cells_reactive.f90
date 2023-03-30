@@ -3110,7 +3110,7 @@ module Solid_Cells
 !
 !  Reset cumulating quantities before calculations in first pencil
 !
-     if (imn == 1) then
+     if (lfirstpoint) then
        if (idiag_c_dragx /= 0 .or. idiag_c_dragy /= 0 .or. &
            idiag_c_dragz /= 0 .or. idiag_c_dragx_p /= 0 .or. &
            idiag_c_dragy_p /= 0 .or. idiag_c_dragz_p /= 0) then
@@ -3698,4 +3698,20 @@ module Solid_Cells
 !
     endsubroutine get_XX_ib
 !***********************************************************************
+    subroutine copyin_solid_cells()
+    endsubroutine copyin_solid_cells
+!***********************************************************************
+  subroutine solid_cells_thread_reductions()
+!  30-mar-23/TP: subroutine for performing solid_cells specific reductions
+!                No test case if this module needs specific reductions. Here to keep the compiler happy 
+
+  endsubroutine solid_cells_thread_reductions
+!***********************************************************************
+  subroutine solid_cells_init_reduc_pointers()
+!  30-mar-23/TP: subroutine for initializing solid_cells specific pointers needed in thread_reductions.
+!                No test case if this module needs specific reductions. Here to keep the compiler happy 
+
+  endsubroutine solid_cells_init_reduc_pointers
+!***********************************************************************
+
 endmodule Solid_Cells

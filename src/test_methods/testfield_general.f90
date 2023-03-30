@@ -113,6 +113,8 @@ module Testfield_general
   integer :: i1=1,i2=2,i3=3,i4=4,i5=5,i6=6,i7=7,i8=8,i9=9
 !
   integer, private :: naainit
+
+  !$omp threadprivate(bamp,delta_testfield_next,delta_testfield_time,bamp1)
 !
   contains
 !***********************************************************************

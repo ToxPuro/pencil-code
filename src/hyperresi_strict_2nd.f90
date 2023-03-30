@@ -159,4 +159,8 @@ module Hyperresi_strict
 !
     endsubroutine der2_2nd
 !***********************************************************************
+    subroutine copyin_hydro()
+    endsubroutine copyin_hydro
+!***********************************************************************
+
 endmodule Hyperresi_strict

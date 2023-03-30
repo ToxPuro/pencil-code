@@ -108,6 +108,7 @@ module PointMasses
   integer, dimension(nqpar)   :: idiag_period=0,idiag_torque=0
   integer                     :: idiag_totenergy=0,idiag_mdot_pt=0
 !
+  !$omp threadprivate(dfq)
   contains
 !***********************************************************************
     subroutine register_pointmasses()

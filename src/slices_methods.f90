@@ -299,7 +299,6 @@ private
       real, dimension(:,:), intent(OUT)          :: xy
       real, dimension(:,:), intent(OUT),optional :: xz,yz,xy2,xy3,xy4,xz2
       real, dimension(:,:,:,:,:), intent(OUT), optional :: r
-
       if (n==iz_loc) xy(:,m-m1+1)=pencil
       if (present(xz) .and.m==iy_loc)  xz(:,n-n1+1)=pencil
       if (present(yz) .and.lwrite_slice_yz) yz(m-m1+1,n-n1+1)=pencil(ix_loc-l1+1)

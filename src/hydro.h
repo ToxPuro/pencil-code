@@ -23,6 +23,8 @@
   public :: calc_gradu
   public :: pushpars2c, pushdiags2c
   public :: calc_diagnostics_hydro, df_diagnos_hydro
+  !TP added for multihreading
+  public :: copyin_hydro
 !
 ! WL: SHOULDN'T BE PUBLIC!
 !

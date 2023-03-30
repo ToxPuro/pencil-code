@@ -58,7 +58,7 @@ module General
   public :: reduce_grad_dim
   public :: meshgrid
   public :: linspace
-  public :: linear_interpolate_2d, linear_interpolate_1d, get_linterp_weights_1D
+  public :: linear_interpolate_2d, linear_interpolate_1d
   public :: chk_time
   public :: get_species_nr
   public :: get_from_nml_str,get_from_nml_log,get_from_nml_real,get_from_nml_int,convert_nml
@@ -67,6 +67,7 @@ module General
             qualify_position_biquin
   public :: binomial,merge_lists
 !
+!$omp threadprivate(rstate,rstate2)
   interface random_number_wrapper
     module procedure random_number_wrapper_0
     module procedure random_number_wrapper_1
@@ -1812,12 +1813,15 @@ module General
     endsubroutine pendag
 !***********************************************************************
     pure subroutine spline(arrx,arry,x2,S,psize1,psize2,err,msg)
+
 !
 !  Interpolates in x2 a natural cubic spline with knots defined by the 1d
 !  arrays arrx and arry.
 !
 !  25-mar-05/wlad : coded
 !
+
+
       integer, intent(in) :: psize1,psize2
       integer :: i,j,ct1,ct2
       real, dimension (psize1) :: arrx,arry,h,h1,a,b,d,sol
@@ -4037,14 +4041,11 @@ endfunction
 
   endfunction pos_in_array_int
 !***********************************************************************
-  integer function allpos_in_array_int(needle, haystack, positions) result(j)
+  integer function allpos_in_array_int(values, haystack, positions) result(j)
 !
-!  finds the position of a number in an array
-!  returns 0 if string is not found
+!  finds the position of a range of values in an array
 !
-!  28-May-2015/Bourdin.KIS: reworked
-!
-    integer, dimension(2), intent(in) :: needle
+    integer, dimension(:), intent(in) :: values
     integer, dimension(:), intent(in) :: haystack
     integer, dimension(size(haystack)), intent(out), optional :: positions
 
@@ -4052,7 +4053,7 @@ endfunction
     
     j=0
     do i = 1, size(haystack)
-      if (needle(1) <= haystack(i) .and. needle(2) <= haystack(i)) then
+      if (any(values == haystack(i))) then
         j=j+1
         if (present(positions)) positions(j) = i
       endif
@@ -6031,36 +6032,6 @@ if (notanumber(source(:,is,js))) print*, 'source(:,is,js): iproc,j=', iproc, ipr
 
     endsubroutine compress_nvidia
 !***********************************************************************
-    subroutine get_linterp_weights_1D(basegrid,baserange,targetgrid,inds,weights)
-!
-!  For each element i of targetgrid, determine the index inds(i) of its nearest left neighbor
-!  in basegrid(baserange(1):baserange(2)) and the two corresponding integration weights weights(i,:).
-!
-      use Cdata, only: iproc
-
-      real, dimension(:) :: basegrid, targetgrid
-      integer, dimension(2) :: baserange
-      real, dimension(:,:) :: weights
-      integer, dimension(:) :: inds
-
-      real, parameter :: eps=1e-6
-      integer :: i,j
-      real :: x
-
-      weights=0.
-      do i=1,size(targetgrid)
-        x=targetgrid(i)
-        do j=baserange(1),baserange(2)
-          if (basegrid(j)>=x+eps) then
-            weights(i,:)=(/basegrid(j)-x,x-basegrid(j-1)/)/(basegrid(j)-basegrid(j-1))
-            inds(i) = j-1-(baserange(1)-1)
-            exit
-          endif
-        enddo
-      enddo
-
-    endsubroutine get_linterp_weights_1D
-!***********************************************************************
     function qualify_position_biquin(ind,nl,nu,lrestr_par_low,lrestr_par_up,lrestr_perp) result (qual)
 !
 ! Qualifies the position of a point w.r.t the neighboring processors for quintic
@@ -6149,8 +6120,9 @@ if (notanumber(source(:,is,js))) print*, 'source(:,is,js): iproc,j=', iproc, ipr
    
     real, dimension(:) :: arr 
     real :: res
-
-    real(KIND=rkind16), dimension(size(arr)) :: arrq 
+!!! Only temp for nvfortran
+    real(KIND=rkind8), dimension(size(arr)) :: arrq 
+!!!    real(KIND=rkind16), dimension(size(arr)) :: arrq 
 
     arrq=arr
     res=sum(arrq)
@@ -6211,4 +6183,5 @@ iloop:do i=1,size(list2)
 
     endsubroutine merge_lists
 !***********************************************************************
+
   endmodule General

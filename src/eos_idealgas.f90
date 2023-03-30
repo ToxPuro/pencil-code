@@ -99,6 +99,8 @@ module EquationOfState
   logical :: lstratset = .false.
   integer, parameter :: BOT=1, TOP=nx
 !
+!$omp threadprivate(rho01,ieosvar2, rho0z)
+!$omp threadprivate(cs2bot, cs2top)
   contains
 !***********************************************************************
     subroutine register_eos
@@ -5036,5 +5038,12 @@ module EquationOfState
     call copy_addr(lnTT0,p_par(6))
 !
     endsubroutine pushpars2c
+!***********************************************************************
+    subroutine eos_copy_in()
+!  30-mar-23/TP: subroutine for copying in required threadprivate variables.
+
+        !$omp parallel copyin(ieosvar2)
+        !$omp end parallel
+    endsubroutine eos_copy_in
 !***********************************************************************
 endmodule EquationOfState

@@ -2096,6 +2096,7 @@ module Boundcond
 !
       select case (topbot)
 !
+      
       case ('bot')               ! bottom boundary
         if (present(val)) f(l1,:,:,j)=val(j)
         if (relative) then
@@ -2116,7 +2117,7 @@ module Boundcond
 !
       case default
         print*, "bc_sym_x: ", topbot, " should be 'top' or 'bot'"
-!
+!     
       endselect
 !
     endsubroutine bc_sym_x

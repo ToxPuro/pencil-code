@@ -36,9 +36,12 @@ module BorderProfiles
 !     border profile chosen is 'initial-condition').
 !
   real, dimension(mx,my,mz,mvar) :: f_init
+  !TP: had to made saved variable threadprivate for multithreading
+  real, dimension (nx,ny,mvar), save :: fsave_init
 !
   logical :: lborder_driving=.false.
   logical :: lborder_quenching=.false.
+  !$omp threadprivate(rborder_mn,fsave_init,border_prof_x,lborder_driving)
 !
   contains
 !***********************************************************************
@@ -337,7 +340,7 @@ module BorderProfiles
 !
 !  28-apr-09/wlad: coded
 !
-      real, dimension (nx,ny,mvar), save :: fsave_init
+      
       real, dimension (nx), intent(out) :: fborder
       integer,intent(in) :: ivar
 !
@@ -402,6 +405,7 @@ module BorderProfiles
 !  if r_int_border and/or r_ext_border are still set to impossible,
 !  then put them equal to r_int and r_ext, respectively.
 !
+      !print*,"lfirstcall",lfirstcall
       if (lfirstcall) then
         if (r_int_border==impossible) r_int_border=r_int
         if (r_ext_border==impossible) r_ext_border=r_ext

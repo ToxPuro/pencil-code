@@ -28,3 +28,5 @@ public ::  r_ogrid, r_int_outer
 public ::  xorigo_ogrid
 public ::  map_nearest_grid_ogrid
 public ::  interpolate_particles_ogrid
+!TP added for multithreading purposes
+public :: copyin_solid_cells, solid_cells_thread_reductions, solid_cells_init_reduc_pointers

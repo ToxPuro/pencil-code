@@ -161,7 +161,7 @@ module Cdata
   real, dimension (nx) :: advec_cs2=0.
   real, dimension (nx) :: maxadvec=0., advec2=0., advec2_hypermesh=0.
   real, dimension (nx) :: maxdiffus=0., maxdiffus2=0., maxdiffus3=0., maxsrc=0.
-  real, dimension (nx) :: dt1_max
+  real, dimension (nx), target :: dt1_max
   real, dimension (nx) :: reac_chem, reac_dust
   real                 :: trelax_poly, reac_pchem
   real, dimension (5) :: alpha_ts=0.0,beta_ts=0.0,dt_beta_ts=1.0
@@ -229,7 +229,6 @@ module Cdata
   integer, dimension(2) :: ivar_omit=(/0,0/)
   logical :: lzaver_on_input=.false.
   logical :: lfatal_num_vector_369=.true.
-  logical :: lsmooth_farray=.false.
 !
 ! Debugging
 !
@@ -436,6 +435,7 @@ module Cdata
 !
   integer :: imn
   integer, target :: lglob=1,m,n
+!$omp threadprivate(m,n)
   integer, dimension (ny*nz) :: mm,nn
   logical, dimension (ny*nz) :: necessary=.false.
   integer :: necessary_imn=0
@@ -466,12 +466,12 @@ module Cdata
   integer, parameter :: mname=100
   real, dimension (mname) :: fweight=0.0
   integer, dimension(:)   , allocatable :: itype_name
-  real, dimension(:)      , allocatable :: fname,fname_keep
-  real, dimension(:,:)    , allocatable :: fnamer,fname_sound
-  real, dimension(:,:,:)  , allocatable :: fnamex, fnamey, fnamez, fnamexy, fnamexz
-  real, dimension(:,:,:,:), allocatable :: fnamerz
+  real, dimension(:)      , allocatable, target :: fname,fname_keep
+  real, dimension(:,:)    , allocatable, target :: fnamer,fname_sound
+  real, dimension(:,:,:)  , allocatable, target :: fnamex, fnamey, fnamez, fnamexy, fnamexz
+  real, dimension(:,:,:,:), allocatable, target :: fnamerz
   integer, dimension(:,:) , allocatable :: sound_coords_list
-  integer, dimension(:,:) , allocatable :: ncountsz 
+  integer, dimension(:,:) , allocatable, target :: ncountsz 
   character (len=fmtlen), allocatable :: cform(:),cformv(:),cform_sound(:), &
                                          cformxy(:),cformxz(:),cformrz(:), &
                                          cformz(:),cformy(:),cformx(:),cformr(:)
@@ -781,4 +781,23 @@ module Cdata
   real :: lambda5 = 0.0
 !
 !***********************************************************************
+!$omp threadprivate(imn,lcoarse_mn,advec_cs2,maxadvec,advec2,advec2_hypermesh)
+!$omp threadprivate(maxdiffus,maxdiffus2,maxdiffus3,maxsrc)
+!$omp threadprivate(costh,nvar,naux,naux_com,nglobal,iux,iu0x,iaxtest, iaztest, reac_dust, dxyz_2,fweight)
+!$omp threadprivate(dxyz_4,dxyz_6,dVol,dxmax_pencil,dxmin_pencil,drcyl,dline_1,lequidist,x0,y0,z0,Lx,Ly,Lz,alpha_ts,&
+!$omp beta_ts,lchemonly,lsnap_down,lwrite_sound,lslope_limit_diff,leos_idealgas,ilnrho,irho,mm,nn,necessary,&
+!$omp imn_array,lpencil_check_at_work,nnamerz,ncoords_sound,tdiagnos,t1ddiagnos,t2davgfirst,sound_coords_list,ncountsz, &
+!$omp cform_sound, cnamerz,ldiagnos,l2davgfirst,l1davgfirst,l1dphiavg,errormsg,mailaddress,aux_var,aux_count,&
+!$omp lisotropic_advection,lgravz,lgravr)
+!$omp threadprivate(lfirstpoint,fname,fnamer,fname_sound,fnamex,fnamey,fnamez,fnamexz,fnamerz,headtt,fname_half,&
+!$omp fname_keep,fnamexy,dt1_max,inds_sum_diags,inds_max_diags)
+!$omp threadprivate(x,dx_1,dx_tilde,xprim,y,z,dx,dy,r_mn,r1_mn,r2_mn,sinth,sin1th,sin2th,cotth,sinph,cosph,cos1th,&
+!$omp tanth,rcyl_mn,rcyl_mn1,rcyl_mn2,xyz_star,nt,ldownsampling,ip,lgravr_gas,lgravr_neutrals,lgravr_dust,iuxt,iuyt,&
+!$omp iuzt,ivisc_forcx,ivisc_forcy,ivisc_forcz,i_adv_derx,i_adv_dery,iuu_flucx,iuu_sphr,headt,lfirst,ltime_integrals)
+!$omp threadprivate(deltay,iapn,test_nonblocking)
+!$omp threadprivate(seed,iuud,iudx,iudy,iudz,ind,imd,idc,idcj,bcx,bcy,bcz,bcx12,bcy12,bcz12)
+!$omp threadprivate(trelax_poly,ip11,ip21,ip31,varname)
+!OPENMP: add declarations here
+!Here removed one's varname
+!, dxyz_2)
 endmodule Cdata

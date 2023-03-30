@@ -45,7 +45,8 @@
   public :: isothermal_entropy,isothermal_lnrho_ss
   public :: get_stratz
   public :: pushpars2c
-
+!TP: added for multithreading
+  public :: eos_copy_in
 !ajwm SHOULDN'T BE PUBLIC
   public :: cs0,cs20,lnrho0,rho0
 !Shouldn't be public, certainly means don't add anymore!!

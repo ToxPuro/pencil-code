@@ -59,6 +59,8 @@ module Polymer
   integer :: idiag_polytrm=0     ! DIAG_DOC: $\left\langle Tr[C_{ij}]\right\rangle$
   integer :: idiag_frmax=0       ! DIAG_DOC: $\max(f(r))$
 !
+!$omp threadprivate(GraduDotC,frmax_local,CDotGraduT)
+!CDotGraduT)
   contains
 !***********************************************************************
     subroutine register_polymer()

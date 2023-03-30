@@ -277,7 +277,9 @@ module Density
   logical :: lupdate_mass_source
   real, dimension(nx) :: diffus_diffrho
   real, dimension(nx) :: diffus_diffrho3
+!$omp threadprivate(diffus_diffrho)
 
+!$omp threadprivate(diffus_diffrho3)
   contains
 !***********************************************************************
     subroutine register_density
