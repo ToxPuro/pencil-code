@@ -142,6 +142,7 @@ module InitialCondition
        lselfgravity_logspirals,dustdensity_powerlaw,edtog,&
        B0_spiral,etamu0_spiral,Omega0_spiral,r0_spiral
 !
+  !$omp threadprivate(widthbb1,widthbb2)
   contains
 !***********************************************************************
     subroutine register_initial_condition()

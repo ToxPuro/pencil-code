@@ -21,6 +21,7 @@ module Solid_Cells
   implicit none
 !
   include 'solid_cells.h'
+
 !
   integer, parameter            :: max_items=5
   integer                       :: ncylinders=0, nrectangles, nspheres=0, dummy
@@ -41,8 +42,8 @@ module Solid_Cells
   logical :: lnointerception=.false., lcheck_ba=.false.
   logical :: lclose_quad_rad_inter=.true.
   logical :: lset_flow_dir=.false.
-  real                          :: rhosum, flow_dir=0., T0, flow_dir_set=0.
-  integer                       :: irhocount
+  real, target                          :: rhosum, flow_dir=0., T0, flow_dir_set=0.
+  integer, target                       :: irhocount
   real                          :: theta_shift=1e-2
   real                          :: limit_close_linear=0.5
   real                          :: ineargridshift=1
@@ -80,12 +81,18 @@ module Solid_Cells
   integer :: idiag_Nusselt=0
 !
   integer, allocatable :: fpnearestgrid(:,:,:)
-  real, allocatable    :: c_dragx(:), c_dragy(:), c_dragz(:), Nusselt(:)
-  real, allocatable    :: c_dragx_p(:), c_dragy_p(:), c_dragz_p(:)
+  real, target, allocatable    :: c_dragx(:), c_dragy(:), c_dragz(:), Nusselt(:)
+  real, target, allocatable    :: c_dragx_p(:), c_dragy_p(:), c_dragz_p(:)
 !  Dummy variables
   real :: r_ogrid
   real :: r_int_outer
   real, dimension(3) :: xorigo_ogrid
+  !$omp threadprivate(c_dragx,c_dragx_p, c_dragy, c_dragy_p, c_dragz, c_dragz_p, rhosum, irhocount,Nusselt)
+  !TP: Added for multithreading purposes
+  real, pointer, dimension(:) :: p_c_dragy, p_c_dragx, p_c_dragz, p_Nusselt, p_c_dragx_p, p_c_dragz_p, p_c_dragy_p
+  real, pointer :: p_rhosum
+  integer, pointer  :: p_irhocount
+ 
 !
   contains
 !***********************************************************************
@@ -718,7 +725,7 @@ module Solid_Cells
 !
 !  Reset cumulating quantities before calculations in first pencil
 !
-          if (imn == 1) then
+          if (lfirstpoint) then
             if (idiag_c_dragx /= 0 .or. idiag_c_dragy /= 0 .or. &
                 idiag_c_dragz /= 0) then
               c_dragx = 0.
@@ -923,6 +930,7 @@ module Solid_Cells
 !  Normalizing factor. Additional factors was included in subroutine dsolid_dt.
               norm = 2. / (refrho0*init_uu**2)
               c_dragx = c_dragx_all * norm
+              print*,"c_dragx_all",c_dragx_all,"norm",norm,"refrho0",refrho0,"init_uu",init_uu
               c_dragy = c_dragy_all * norm
               c_dragz = c_dragz_all * norm
               c_dragx_p = c_dragx_p_all * norm
@@ -3806,5 +3814,39 @@ module Solid_Cells
       gp=0.
 !
     endsubroutine interpolate_particles_ogrid
+!***********************************************************************
+    subroutine copyin_solid_cells()
+    !$use omp_lib
+    !$omp parallel copyin(c_dragx,c_dragx_p, c_dragy, c_dragy_p, c_dragz, c_dragz_p, rhosum, irhocount,Nusselt)
+    !$omp end parallel
+    endsubroutine copyin_solid_cells
+!***********************************************************************
+  subroutine solid_cells_thread_reductions()
+!  30-mar-23/TP: function for performing solid_cells specific thread_reductions
+      if(ldiagnos) then
+        p_rhosum = p_rhosum + rhosum
+        p_irhocount = p_irhocount + irhocount
+        if(allocated(c_dragy)) p_c_dragy = p_c_dragy + c_dragy
+        if(allocated(c_dragz)) p_c_dragz = p_c_dragz + c_dragz
+        if(allocated(c_dragx)) p_c_dragx = p_c_dragx + c_dragx
+        if(allocated(Nusselt)) p_Nusselt = p_Nusselt + Nusselt
+        if(allocated(c_dragx_p)) p_c_dragx_p = p_c_dragx_p + c_dragx_p
+        if(allocated(c_dragy_p)) p_c_dragy_p = p_c_dragy_p + c_dragy_p
+        if(allocated(c_dragz_p)) p_c_dragz_p = p_c_dragz_p + c_dragz_p
+      endif
+  endsubroutine solid_cells_thread_reductions
+!***********************************************************************
+  subroutine solid_cells_init_reduc_pointers()
+!  30-mar-23/TP: function for initializing solid_cells specific pointers needed in thread_reductions 
+    p_rhosum => rhosum
+    p_irhocount => irhocount
+    p_c_dragy => c_dragy
+    p_c_dragx => c_dragx
+    p_c_dragz => c_dragz
+    p_Nusselt => Nusselt
+    p_c_dragx_p => c_dragx_p
+    p_c_dragy_p => c_dragy_p
+    p_c_dragz_p => c_dragz_p
+  endsubroutine solid_cells_init_reduc_pointers
 !***********************************************************************
 endmodule Solid_Cells

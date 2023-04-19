@@ -535,7 +535,7 @@ module Special
 !  06-oct-03/tony: coded
 !  01-aug-11/wlad: adapted
 !
-      use Diagnostics, only: sum_mn_name, max_mn_name, yzsum_mn_name_x 
+      use Diagnostics, only: sum_mn_name, max_mn_name, yzsum_mn_name_x
 !
       real, dimension (mx,my,mz,mfarray) :: f
       real, dimension (mx,my,mz,mvar) :: df
@@ -585,6 +585,7 @@ module Special
         endif
         if (idiag_sigmam/=0)   call sum_mn_name(psigma,idiag_sigmam)
         if (idiag_sigmamax/=0) call max_mn_name(psigma,idiag_sigmamax)
+        !!Special place come here later
         if (idiag_sigmamin/=0) call max_mn_name(-psigma,idiag_sigmamin,lneg=.true.)
       endif
 !

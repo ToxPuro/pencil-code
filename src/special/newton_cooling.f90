@@ -81,6 +81,7 @@ module Special
   integer :: idiag_taucoolm=0,idiag_taucoolmax=0,idiag_taucoolmin=0
   integer :: idiag_dts=0
 !
+!$omp threadprivate(q)
   contains
 !***********************************************************************
     subroutine register_special()
@@ -537,6 +538,7 @@ module Special
       use Diagnostics
       use EquationOfState, only: cs20,gamma_m1,gamma1
       use General, only: notanumber
+      use omp_lib
 !      
       real, dimension (mx,my,mz,mvar+maux), intent(in) :: f
       real, dimension (mx,my,mz,mvar), intent(inout) :: df
@@ -565,6 +567,7 @@ module Special
         if (idiag_taumin/=0) call max_mn_name(-q%tau,idiag_taumin,lneg=.true.)
 !
         if (idiag_taucoolm/=0)   call sum_mn_name(q%taucool,idiag_taucoolm)
+        print*,OMP_get_thread_num(),imn,"sum(q%taucool)",sum(q%taucool)
         if (idiag_taucoolmax/=0) call max_mn_name(q%taucool,idiag_taucoolmax)
         if (idiag_taucoolmin/=0) call max_mn_name(-q%taucool,idiag_taucoolmin,lneg=.true.)
 !

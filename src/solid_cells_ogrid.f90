@@ -1602,6 +1602,7 @@ module Solid_Cells
       call mpireduce_sum(c_dragy,c_dragy_all)
 !
       if(lroot) then
+        print*,imn
         c_dragx=c_dragx_all*norm
         c_dragy=c_dragy_all*norm
         if (idiag_c_dragx /= 0) fname(idiag_c_dragx)=c_dragx
@@ -10083,4 +10084,21 @@ module Solid_Cells
 !!
 !  endsubroutine flow_curvilinear_to_cartesian
 !***********************************************************************
+  subroutine copyin_solid_cells()
+    endsubroutine copyin_solid_cells
+!***********************************************************************
+  subroutine solid_cells_thread_reductions()
+!  30-mar-23/TP: subroutine for performing solid_cells specific reductions
+!                No test case if this module needs specific reductions. Here to keep the compiler happy 
+
+  endsubroutine solid_cells_thread_reductions
+!***********************************************************************
+  subroutine solid_cells_init_reduc_pointers()
+!  30-mar-23/TP: function for initializing solid_cells specific pointers needed in thread_reductions.
+!                No test case if this module needs specific reductions. Here to keep the compiler happy 
+
+  endsubroutine solid_cells_init_reduc_pointers
+!***********************************************************************
+
+
 endmodule solid_cells

@@ -26,6 +26,9 @@ void initializeGPU();
 void finalizeGPU();
 void substepGPU(int isubstep, int full, int early_finalize);
 void copyFarray();
+void helloWorld();
+void registerBoundCond(int bc_id, int dimension); 
+void notifyBoundCondDone(int bc_id, int dimension);
 
 // for Gnu Compiler
 extern char *__cparam_MOD_coornames;
@@ -34,7 +37,7 @@ extern REAL __cdata_MOD_dx, __cdata_MOD_dy, __cdata_MOD_dz;
 extern FINT __cdata_MOD_llast_proc_x;
 extern FINT __hydro_MOD_idiag_umax;
 // ----------------------------------------------------------------------
-void FTNIZE(initialize_gpu_c)()
+void FTNIZE(initialize_gpu_c)(REAL **farr_GPU_in, REAL **farr_GPU_out)
 /* Initializes GPU.
 */
 {
@@ -54,7 +57,7 @@ void FTNIZE(initialize_gpu_c)()
   //printf("llast_proc_x = %d\n", __cdata_MOD_llast_proc_x);
   //printf("ldiagnos = %d\n", ldiagnos);
 
-  initializeGPU();
+  initializeGPU(farr_GPU_in,farr_GPU_out);
 
 /*
   printf("xmin = %e\n", x[4]);
@@ -125,6 +128,18 @@ void FTNIZE(rhs_gpu_c)
   // copies data back and forth and peforms integration substep isubstep
 
   substepGPU(*isubstep, *full, *early_finalize);
+}
+void FTNIZE(hello_world_c)
+    (FINT *index){
+      helloWorld(*index);
+}
+void FTNIZE(register_boundcond_c)
+    (FINT *bc_id, FINT *dimension){
+      registerBoundCond(*bc_id,*dimension);
+}
+void FTNIZE(notify_boundcond_done_c)
+    (FINT *bc_id, FINT *dimension){
+      notifyBoundCondDone(*bc_id,*dimension);
 }
 /* ---------------------------------------------------------------------- */
 void FTNIZE(copy_farray_c)(REAL *uu_x, REAL *uu_y, REAL *uu_z, REAL *lnrho)

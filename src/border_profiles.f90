@@ -36,9 +36,12 @@ module BorderProfiles
 !     border profile chosen is 'initial-condition').
 !
   real, dimension(mx,my,mz,mvar) :: f_init
+  !TP: had to made saved variable threadprivate for multithreading
+  real, dimension (nx,ny,mvar), save :: fsave_init
 !
   logical :: lborder_driving=.false.
   logical :: lborder_quenching=.false.
+  !$omp threadprivate(rborder_mn,fsave_init,border_prof_x,lborder_driving)
 !
   contains
 !***********************************************************************
@@ -135,14 +138,13 @@ module BorderProfiles
 !
       border_prof_r(l1:l2,m1:m2,n1:n2)=1
       if (border_frac_r(1)>0) then
-        if (lperi(3) .or. .not. lcartesian_coords) call fatal_error('initialize_border_profiles', &
-            'must have lperi(3)=F and lcartesian_coord=T for border profile in r')
-        border_width=border_frac_r(1)*maxval(Lxyz)/2
-        lborder=xyz0(3)+border_width
-        border_width=border_frac_r(1)*maxval(Lxyz)/60
+        if (.not. lcartesian_coords) call fatal_error('initialize_border_profiles', &
+            'must have lcartesian_coord=T for border profile in r')
+        border_width=border_frac_r(1)
+        lborder=4.0+border_width ! 3*rs
         do m=m1, m2
           do n=n1, n2
-            border_prof_r(l1:l2,m,n)=0.5*(1+tanh(sqrt((x(l1:l2)**2+y(m)**2+z(n)**2)- &
+            border_prof_r(l1:l2,m,n)=0.5*(1+tanh((sqrt(x(l1:l2)**2+y(m)**2+z(n)**2)- &
                                      lborder)/border_width))
           enddo
         enddo
@@ -337,7 +339,7 @@ module BorderProfiles
 !
 !  28-apr-09/wlad: coded
 !
-      real, dimension (nx,ny,mvar), save :: fsave_init
+      
       real, dimension (nx), intent(out) :: fborder
       integer,intent(in) :: ivar
 !
@@ -402,6 +404,7 @@ module BorderProfiles
 !  if r_int_border and/or r_ext_border are still set to impossible,
 !  then put them equal to r_int and r_ext, respectively.
 !
+      !print*,"lfirstcall",lfirstcall
       if (lfirstcall) then
         if (r_int_border==impossible) r_int_border=r_int
         if (r_ext_border==impossible) r_ext_border=r_ext

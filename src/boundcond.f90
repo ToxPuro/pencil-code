@@ -14,6 +14,7 @@ module Boundcond
   use General
 !
   implicit none
+  external hello_world
 !
   private
 !
@@ -671,6 +672,7 @@ module Boundcond
 !
       use EquationOfState
       use Shear
+      use Gpu
       use Special, only: special_boundconds
 !
       real, dimension (:,:,:,:) :: f
@@ -1006,6 +1008,9 @@ module Boundcond
           enddo
         endif
       endselect
+      !if(lgpu) call register_boundcond("a",1)
+      !if(lgpu) call register_boundcond("af",1)
+      !if(lgpu) call notify_boundcond_done("af",1)
 !
     endsubroutine boundconds_x
 !***********************************************************************
@@ -2096,6 +2101,7 @@ module Boundcond
 !
       select case (topbot)
 !
+      
       case ('bot')               ! bottom boundary
         if (present(val)) f(l1,:,:,j)=val(j)
         if (relative) then
@@ -2116,7 +2122,7 @@ module Boundcond
 !
       case default
         print*, "bc_sym_x: ", topbot, " should be 'top' or 'bot'"
-!
+!     
       endselect
 !
     endsubroutine bc_sym_x

@@ -92,7 +92,9 @@ module Special
 !
   logical, pointer :: lpressuregradient_gas
 !
+  !$omp threadprivate(q)
   contains
+
 !***********************************************************************
     subroutine register_special()
 !

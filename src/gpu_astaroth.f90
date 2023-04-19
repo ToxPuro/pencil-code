@@ -18,9 +18,14 @@ module GPU
   external finalize_gpu_c
   external rhs_gpu_c
   external copy_farray_c
+  external register_boundcond_c
+  external notify_boundcond_done_c
 
   include 'gpu.h'
 
+  integer(KIND=ikind8) :: pFarr_GPU_in, pFarr_GPU_out
+  character (len=bclen), dimension(20) :: registered_boundconds="" 
+  
 contains
 
 !***********************************************************************
@@ -67,11 +72,10 @@ contains
       if (lpower_spectrum) str=trim(str)//', '//'power_spectrum'
       if (lparticles) str=trim(str)//', '//'particles'
 
-      if (str/='') &
-        call stop_it('No GPU implementation for module(s) "'//trim(str(3:))//'"')
+      if (str/='') call stop_it('No GPU implementation for module(s) "'//trim(str(3:))//'"')
 !
-      call initialize_gpu_c
-
+      call initialize_gpu_c(pFarr_GPU_in,pFarr_GPU_out)
+print'(a,1x,Z0,1x,Z0)', 'pFarr_GPU_in,pFarr_GPU_out=', pFarr_GPU_in,pFarr_GPU_out
     endsubroutine initialize_GPU
 !**************************************************************************
     subroutine gpu_init
@@ -87,6 +91,34 @@ contains
       call register_gpu_c(f)
 !
     endsubroutine register_GPU
+!**************************************************************************
+    subroutine get_bc_id(boundcond_name,dimension,bc_id)
+      character (len=bclen) :: boundcond_name 
+      integer :: dimension, i, bc_id
+      do i=1,20
+        if(boundcond_name == registered_boundconds(i)) bc_id = i-1
+        if(registered_boundconds(i) == "" .and. bc_id == -1) then
+          registered_boundconds(i) = boundcond_name
+          bc_id = i-1
+        endif
+      end do
+    endsubroutine get_bc_id
+!**************************************************************************
+    subroutine notify_boundcond_done(boundcond_name, dimension)
+      character (len=bclen) :: boundcond_name 
+      integer :: dimension, i, bc_id
+      bc_id = -1
+      call get_bc_id(boundcond_name,dimension,bc_id)
+      call notify_boundcond_done_c(bc_id,dimension)
+    endsubroutine notify_boundcond_done
+!**************************************************************************
+    subroutine register_boundcond(boundcond_name, dimension)
+      character (len=bclen) :: boundcond_name 
+      integer :: dimension, i, bc_id
+      bc_id = -1
+      call get_bc_id(boundcond_name,dimension,bc_id)
+      call register_boundcond_c(bc_id,dimension)
+    end subroutine register_boundcond
 !**************************************************************************
     subroutine finalize_GPU
 !

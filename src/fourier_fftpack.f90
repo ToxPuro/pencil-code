@@ -57,6 +57,7 @@ module Fourier
     module procedure fft_xyz_parallel_4D
   endinterface
 !
+!$omp threadprivate(ax,ay)
   contains
 !
   include 'fourier_common.h'

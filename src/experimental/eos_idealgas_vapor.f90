@@ -1398,5 +1398,11 @@ module EquationOfState
       if (present(eth0z)) call keep_compiler_quiet(eth0z)
 !
     endsubroutine get_stratz
-!***********************************************************************
+!***********************************************************************    
+subroutine eos_copy_in()
+    endsubroutine eos_copy_in
+!**********************************************************************
+
+
+
 endmodule EquationOfState

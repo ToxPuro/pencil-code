@@ -141,6 +141,7 @@ module SharedVariables
 !
   character(LEN=2*labellen) :: scaller=''
 !
+!$omp threadprivate(scaller)
   contains
 !
 !***********************************************************************

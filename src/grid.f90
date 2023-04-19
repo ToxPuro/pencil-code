@@ -1424,6 +1424,7 @@ module Grid
         if (lroot) print*,'initialize_grid: Set up half grid x12, y12, z12'
         call generate_halfgrid(x12,y12,z12)
       endif
+
 !
     endsubroutine initialize_grid
 !***********************************************************************
@@ -2554,6 +2555,7 @@ if (abs(sum(ws)-1.)>1e-7) write(iproc+40,'(6(e12.5,1x), e12.5)') ws, sum(ws)
 !
 !      else obsolete
 !
+
         if (lspherical_coords) then
           dline_1(:,1) = dx_1(l1:l2)
           dline_1(:,2) = r1_mn * dy_1(m)
@@ -2594,6 +2596,7 @@ if (abs(sum(ws)-1.)>1e-7) write(iproc+40,'(6(e12.5,1x), e12.5)') ws, sum(ws)
         endif
 !
         dVol = dVol_x(l1:l2)*dVol_y(m)*dVol_z(n)
+
 !
 !      endif obsolete
 !

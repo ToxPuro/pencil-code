@@ -215,6 +215,7 @@ module Testfield
 !
   real, dimension(nz,3,njtest) :: uxbtestm,jxbtestm    ! TB improved: declare smaller (njtestl) if possible, requires tb allocatable
 
+!$omp threadprivate(bb11_xy,bb11_xy2,bb11_xz,bb11_yz,kdamp_iter,lfirst_iter,t_iter_last,taainit_previous)
   contains
 !
 !***********************************************************************

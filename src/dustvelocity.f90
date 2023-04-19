@@ -34,6 +34,7 @@ module Dustvelocity
   public :: rhods, surfd, mdplus, mdminus
   public :: ad, scolld, ustcst, tausd1, tausd
   public :: unit_md, dust_chemistry, mumon, mmon, mi, md
+  public dust_velocity_copy_in
 !
   integer, parameter :: nvisc_max=4
   complex, dimension (7) :: coeff=0.
@@ -121,6 +122,7 @@ module Dustvelocity
   integer, dimension(ndustspec) :: idiag_rdudxm=0, idiag_rdudym=0
   integer, dimension(ndustspec) :: idiag_rdudzm=0, idiag_rdudx2m=0
 !
+!$omp threadprivate(scolld, tausd1, md, mi)
   contains
 !***********************************************************************
     subroutine register_dustvelocity()
@@ -1844,4 +1846,10 @@ module Dustvelocity
 !
     endsubroutine get_slices_dustvelocity
 !***********************************************************************
+    subroutine dust_velocity_copy_in()
+!  30-mar-23/TP: subroutine for copying in required threadprivate variables.
+
+        !$omp parallel copyin(scolld, tausd1, md, mi)
+        !$omp end parallel
+    endsubroutine dust_velocity_copy_in
 endmodule Dustvelocity

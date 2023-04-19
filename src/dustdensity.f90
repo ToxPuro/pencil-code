@@ -160,6 +160,7 @@ module Dustdensity
   integer, dimension(ndustspec) :: idiag_divud2m=0
   integer, dimension(0:mmom)    :: idiag_rmom=0, idiag_admom=0
 !
+!$omp threadprivate(dkern,dsize,dndfac_sum,dndfac_sum2,momcons_sum_x,momcons_sum_y,momcons_sum_z,lcalcdkern)
   contains
 !***********************************************************************
     subroutine register_dustdensity()

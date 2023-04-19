@@ -199,22 +199,26 @@ module Particles_map
       if (lequidist(1)) then
         if (lfirstcall) dx1=dx_1(ix0) !1/dx
       else
+      print*,imn
         dx1=dx_1(ix0)
       endif
 !
       if (lequidist(2)) then
         if (lfirstcall) dy1=dy_1(iy0)
       else
+      print*,imn
         dy1=dy_1(iy0)
       endif
 !
       if (lequidist(3)) then
         if (lfirstcall) dz1=dz_1(iz0)
       else
+      print*,imn
         dz1=dz_1(iz0)
       endif
 !
       if ( (.not. all(lequidist)) .or. lfirstcall) then
+      print*,imn
         dxdy1=dx1*dy1; dxdz1=dx1*dz1; dydz1=dy1*dz1
         dxdydz1=dx1*dy1*dz1
       endif

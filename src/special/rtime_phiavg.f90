@@ -105,6 +105,7 @@ module Special
 !
   integer :: idiag_brbpmr=0,idiag_urupmr=0,idiag_mdotmr=0
 !
+  !$omp threadprivate(bavg, uavg, rhoavg)
   contains
 !
 !***********************************************************************
@@ -425,6 +426,7 @@ module Special
           endif
         endif
       enddo
+    !   if(ldiagnos) print*,OMP_get_thread_num(),imn,"sum(uavg): ",sum(uavg)
 !
       call keep_compiler_quiet(f)
 !
@@ -435,13 +437,14 @@ module Special
 !   16-jul-06/wlyra: coded
 !
       use Diagnostics
+      use omp_lib
 !
       real, dimension (mx,my,mz,mvar+maux), intent(in) :: f
       real, dimension (mx,my,mz,mvar), intent(inout) :: df
       type (pencil_case), intent(in) :: p
       real, dimension (nx) :: ur,up,uz,urad,uphi
       real :: fac
-!
+
       urad=p%uu(:,1)*p%pomx+p%uu(:,2)*p%pomy
       uphi=p%uu(:,1)*p%phix+p%uu(:,2)*p%phiy
       ur=urad      - uavg(:,1)
@@ -454,6 +457,8 @@ module Special
       endif
 !
       if (ldiagnos) then
+
+        ! if(ldiagnos) print*,OMP_get_thread_num(),imn,"sum(urad): ",sum(urad),"sum(uavg): ",sum(uavg)
         if (idiag_urm/=0)    call sum_lim_mn_name(ur,idiag_urm,p)
         if (idiag_upm/=0)    call sum_lim_mn_name(up,idiag_upm,p)
         if (idiag_uzzm/=0)   call sum_lim_mn_name(uz,idiag_uzzm,p)
@@ -471,6 +476,8 @@ module Special
         if (idiag_mdotmr/=0) &
              call phizsum_mn_name_r(p%rho*urad*2*pi*p%rcyl_mn*fac,idiag_mdotmr)
       endif
+
+
 !
       call keep_compiler_quiet(f,df)
 !
@@ -577,6 +584,7 @@ module Special
       if (lhydro)                uavg_coarse=0
       if (lcalc_density_pars)  rhoavg_coarse=0.
 !
+
       do m=m1,m2
         do n=n1,n2
 !
@@ -590,6 +598,7 @@ module Special
 !
           if (lcalc_density_pars) prho=f(l1:l2,m,n,ilnrho)
           if (lhydro) then
+          !iux not the same
             puu1=f(l1:l2,m,n,iux);puu2=f(l1:l2,m,n,iuy);puu3=f(l1:l2,m,n,iuz)
             uuf(:,1)=  puu1*cos+puu2*sin
             uuf(:,2)= -puu1*sin+puu2*cos
@@ -622,15 +631,21 @@ module Special
           if (lfp) then
             k_tmp=k
             if (lcalc_density_pars) rho_tmp=s_rho
-            if (lhydro)               u_tmp=s_u
+            if (lhydro)  then
+                         u_tmp=s_u
+            endif
             if (lmagnetic)            b_tmp=s_b
           else
             k_tmp = k_tmp + k
             if (lcalc_density_pars) rho_tmp = rho_tmp+s_rho
-            if (lhydro)             u_tmp   =   u_tmp+s_u
+            if (lhydro)    then
+                     u_tmp   =   u_tmp+s_u
+            endif
             if (lmagnetic)          b_tmp   =   b_tmp+s_b
           endif
 !
+
+            !if(ldiagnos) print*,"sum(u_sum): ",sum(u_sum)
           if (llp) then
             call mpireduce_sum_int(k_tmp,ktot,nrcylrun)
             if (lcalc_density_pars) call mpireduce_sum(rho_tmp,   rho_sum     ,nrcylrun)
@@ -646,12 +661,17 @@ module Special
               if (lmagnetic)        call mpibcast_real(  b_sum(:,j),nrcylrun)
             enddo
 !
+
             if (any(ktot == 0)) &
                  call error("set_new_average","ktot=0")
             ktot1=1./ktot
             if (lcalc_density_pars) rhoavg_coarse   =rho_sum     *ktot1
             do j=1,nd
+                 
               if (lhydro)           uavg_coarse(:,j)=  u_sum(:,j)*ktot1
+              if(ldiagnos) print*,"inside loop",j,"sum(uavg_coarse): ",sum(uavg_coarse)
+              if(ldiagnos) print*,"inside loop",j,"sum(ktot1): ",sum(ktot1)
+              if(ldiagnos) print*,"inside loop",j,"sum(u_sum): ",sum(u_sum)
               if (lmagnetic)        bavg_coarse(:,j)=  b_sum(:,j)*ktot1
             enddo
           endif

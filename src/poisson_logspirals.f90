@@ -66,6 +66,9 @@ module Poisson
   integer :: ixlower_fourier,ixupper_fourier
   integer :: iylower_fourier,iyupper_fourier
 !
+!$omp threadprivate(Gnewton,luse_fourier_transform,innerradius,du,dphi,B,B2,u2d,phi2d,phi2d_global,kr,&
+!$omp kr_fft_real,kr_fft_imag,kphi,kphi_fft_real,kphi_fft_imag,ipx_fourier,ipy_fourier,&
+!$omp ixlower_fourier,ixupper_fourier,iylower_fourier,iyupper_fourier,u2d_global)
 contains
 !***********************************************************************
     subroutine initialize_poisson()

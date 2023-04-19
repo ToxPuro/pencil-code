@@ -28,7 +28,7 @@ module Sub
   public :: inverse_parse_bc
 !
   public :: poly
-  public :: blob, vecout, vecout_finalize
+  public :: blob, blobs, vecout, vecout_finalize, vecout_initialize
   public :: cubic_step, cubic_der_step, quintic_step, quintic_der_step, erfunc
   public :: sine_step, interp1
   public :: hypergeometric2F1
@@ -349,6 +349,9 @@ module Sub
  2.21580e-07,9.14337e-06,2.69243e-05,9.14337e-06, 2.21580e-07, 9.07894e-11, 5.03438e-15, 9.07894e-11, 1.24384e-08, 5.46411e-08,&
  1.24384e-08,9.07894e-11,5.03438e-15 /), (/ 7, 7, 7 /))
 !
+!TP made save variables threadprivate module variables
+integer :: indr=0, indth=0
+!$omp threadprivate(indr,indth)
   contains
 !
 !***********************************************************************
@@ -1611,7 +1614,6 @@ module Sub
 !
       integer :: k1,i
       real, dimension(nx) :: tmp
-      integer, save :: indr=0, indth=0
       logical, save :: s0=.true.
 !
       k1=k-1
@@ -3954,28 +3956,17 @@ module Sub
       character (len=*) :: file
       real, dimension(nx,3) :: vv
       real, dimension(nx) :: v2
-      real :: thresh,thresh2,dummy=0.
+      real :: thresh,thresh2
       integer :: l,lun,nvec
-      real :: t_sp          ! t in single precision for backwards compatibility
 !
 !  Return if thresh=0 (default).
 !
       if (thresh==0.) return
 !
-      t_sp = t
-!
-!  Open files when first data point.
-!
-      if (lfirstpoint) then
-        open(lun,FILE=trim(file)//'.dat',form='unformatted',position='append')
-        write(lun) 0,0,0,t_sp,dummy,dummy  !(marking first line)
-        nvec=0
-      endif
-!
 !  Write data.
 !
       thresh2=thresh**2
-      v2=vv(:,1)**2+vv(:,2)**2+vv(:,3)**2
+      v2=sum(vv**2,2)
       do l=1,nx
         if (v2(l)>=thresh2) then
           write(lun) l,m-nghost,n-nghost,vv(l,:)
@@ -3985,21 +3976,35 @@ module Sub
 
     endsubroutine vecout
 !***********************************************************************
-    subroutine vecout_finalize(file,lun,nvec)
+    subroutine vecout_initialize(lun,file,nvec)
+!
+!  Close file, and write number of vectors to a separate file.
+!
+      character (len=*) :: file
+      integer :: lun, nvec
+!
+!  Open file.
+!
+      open(lun,FILE=trim(file)//'.dat',form='unformatted',position='append')
+      write(lun) 0,0,0,real(t),0.,0.  !(marking first line)
+      nvec=0
+!
+    endsubroutine vecout_initialize
+!***********************************************************************
+    subroutine vecout_finalize(lun,file,nvec)
 !
 !  Close file, and write number of vectors to a separate file.
 !
       character (len=*) :: file
       integer :: lun,nvec
-      real :: t_sp   ! t in single precision for backwards compatibility
-
-      t_sp=t
 !
 !  Close file, and write number of vectors to a separate file.
 !
       close(lun)
+      if (nvec==0) return
+
       open(lun,FILE=trim(file)//'.num',position='append')
-      write(lun,*) t_sp,nvec
+      write(lun,*) real(t),nvec
       close(lun)
 !
     endsubroutine vecout_finalize
@@ -5480,7 +5485,8 @@ nameloop: do
 !
     endsubroutine remove_prof
 !***********************************************************************
-    subroutine blob(ampl,f,i,radius,xblob,yblob,zblob,radius_x,lexp)
+    subroutine blob(ampl,f,i,radius,xblob,yblob,zblob,radius_x, &
+        lexp, lperi, lconst_aver)
 !
 !  Single blob.
 !
@@ -5489,10 +5495,14 @@ nameloop: do
 !
       integer :: i
       real, dimension (mx,my,mz,mfarray) :: f
+      real, dimension (mx) :: delx
+      real, dimension (my) :: dely
+      real, dimension (mz) :: delz
       real, optional :: xblob,yblob,zblob
-      real :: ampl,radius,x01=0.,y01=0.,z01=0.,fact, fact_x
+      real :: ampl,radius,x01=0.,y01=0.,z01=0.,fact, factx
+      real :: ampl1=1., ampl2=1., norm=1.
       real, optional :: radius_x
-      logical, optional :: lexp
+      logical, optional :: lexp, lperi, lconst_aver
 !
 !  Single  blob.
 !
@@ -5505,29 +5515,125 @@ nameloop: do
         if (lroot.and.ip<14) print*,'blob: variable i,ampl=',i,ampl
         fact=1./radius**2
 !
-!  Possibility of elongated blob in the x direction
+!  Possibility of elongated blob in the x direction.
 !
         if (present(radius_x)) then
-          fact_x=1./radius_x**2
+          factx=1./radius_x**2
         else
-          fact_x=fact
+          factx=fact
         endif
 !
-        if (present(lexp)) then
-          f(:,:,:,i)=f(:,:,:,i)+exp(ampl*( &
-             spread(spread(exp(-fact_x*(x-x01)**2),2,my),3,mz) &
-            *spread(spread(exp(-fact  *(y-y01)**2),1,mx),3,mz) &
-            *spread(spread(exp(-fact  *(z-z01)**2),1,mx),2,my)))
-        else
+!  Possibility of periodicity.
 !
-          f(:,:,:,i)=f(:,:,:,i)+ampl*( &
-             spread(spread(exp(-fact_x*(x-x01)**2),2,my),3,mz) &
-            *spread(spread(exp(-fact  *(y-y01)**2),1,mx),3,mz) &
-            *spread(spread(exp(-fact  *(z-z01)**2),1,mx),2,my))
+        if (present(lperi)) then
+          if (lperi) then
+            delx=2.*atan(tan(.5*(x-x01)))
+            dely=2.*atan(tan(.5*(y-y01)))
+            delz=2.*atan(tan(.5*(z-z01)))
+          else
+            delx=x-x01
+            dely=y-y01
+            delz=z-z01
+          endif
+        else
+          delx=x-x01
+          dely=y-y01
+          delz=z-z01
+        endif
+!
+!  Possibility of normalization to constant average.
+!  Define here radius as sigma.
+!
+        if (present(lconst_aver)) then
+          if (lconst_aver) then
+            fact=.5*fact
+            factx=.5*factx
+            ampl1=1.-ampl
+            ampl2=ampl*box_volume
+            norm=1./sqrt(twopi*radius**2)**dimensionality
+          else
+            ampl1=0.
+            ampl2=ampl
+            norm=1.
+          endif
+        else
+          ampl1=0.
+          ampl2=ampl
+          norm=1.
+        endif
+!
+!  Two options, either Gaussian directly, or only for its logarithm.
+!
+        if (present(lexp)) then
+   !      f(:,:,:,i)=f(:,:,:,i)+ampl1+ampl2*norm*exp(( &
+   !         spread(spread(exp(-factx*delx**2),2,my),3,mz) &
+   !        *spread(spread(exp(-fact  *dely**2),1,mx),3,mz) &
+   !        *spread(spread(exp(-fact  *delz**2),1,mx),2,my)))
+          call fatal_error('blob','AB: hope lexp is not used here')
+        else
+          f(:,:,:,i)=f(:,:,:,i)+ampl1+ampl2*norm*( &
+             spread(spread(exp(-factx*delx**2),2,my),3,mz) &
+            *spread(spread(exp(-fact *dely**2),1,mx),3,mz) &
+            *spread(spread(exp(-fact *delz**2),1,mx),2,my))
         endif
       endif
 !
     endsubroutine blob
+!***********************************************************************
+    subroutine blobs(ampl,f,i,radius,nblobs)
+!
+!  Initialize n blobs.
+!
+!  19-mar-23/axel: adapted from blob
+!
+      use General, only: random_number_wrapper
+!
+      integer :: i, iblob, nblobs
+      real, dimension (mx,my,mz,mfarray) :: f
+      real, dimension (nblobs*3) :: r0
+      real, dimension (mx) :: delx
+      real, dimension (my) :: dely
+      real, dimension (mz) :: delz
+      real :: ampl, radius, fact, ampl1=1., ampl2=1., norm=1.
+!
+!  Compute nblobs random numbers
+!
+      call random_number_wrapper(r0)
+      r0=pi*(2*r0-1.)
+!
+!  Loop over all blobs
+!
+      do iblob=1,nblobs
+!
+!  Possibility of periodicity.
+!
+        delx=2.*atan(tan(.5*(x-r0(iblob+0*nblobs))))
+        dely=2.*atan(tan(.5*(y-r0(iblob+1*nblobs))))
+        if (nz==1) then
+          delz=0.
+        else
+          delz=2.*atan(tan(.5*(z-r0(iblob+2*nblobs))))
+        endif
+!
+        print*,'AXEL: iblob, x=',iblob,r0(iblob+0*nblobs)
+        print*,'AXEL: iblob, y=',iblob,r0(iblob+1*nblobs)
+        print*,'AXEL: iblob, z=',iblob,r0(iblob+2*nblobs)
+!
+!  Possibility of normalization to constant average.
+!  Define here radius as sigma.
+!
+        ampl1=1.-ampl
+        ampl2=ampl*box_volume
+        norm=1./sqrt(twopi*radius**2)**dimensionality
+        fact=.5/radius**2
+!
+        f(:,:,:,i)=f(:,:,:,i)+ampl1+ampl2*norm*( &
+             spread(spread(exp(-fact*delx**2),2,my),3,mz) &
+            *spread(spread(exp(-fact*dely**2),1,mx),3,mz) &
+            *spread(spread(exp(-fact*delz**2),1,mx),2,my))
+      enddo
+!
+    endsubroutine blobs
 !***********************************************************************
     recursive function hypergeometric2F1(a,b,c,z,tol) result (hyp2F1)
 !

@@ -187,4 +187,8 @@ module Particles_cdata
 !    endsubroutine allocate_neighbour_list
 !***********************************************************************
 !
+!$omp threadprivate(kshepherd,kneighbour,ipar,np_swarm,interp_uu,interp_oo,interp_gradTT,interp_rho,interp_tt, interp_nu)
+!$omp threadprivate(gab_weights,neighbors_par,ipar_fence_species,npvar,npar_loc,npaux,pvarname,iupx,iupy,iupz)
+!ixp,ivpx
+!omp threadprivate(,lparticlemesh_cic,lparticlemesh_tsc,lparticlemesh_gab)
 endmodule Particles_cdata

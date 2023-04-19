@@ -1824,4 +1824,10 @@ module EquationOfState
 !
     endsubroutine eosperturb
 !***********************************************************************
+    subroutine eos_copy_in()
+!  30-mar-23/TP: subroutine for copying in required threadprivate variables.
+!                No test case if this module needs specific variables copied in. Here to keep the compiler happy 
+
+    endsubroutine eos_copy_in
+!***********************************************************************
 endmodule EquationOfState

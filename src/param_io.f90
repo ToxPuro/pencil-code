@@ -133,7 +133,7 @@ module Param_IO
       lnoghost_strati, ichannel1, ichannel2, tag_foreign, &
       lpoint, mpoint, npoint, lpoint2, mpoint2, npoint2, &
       lfatal_num_vector_369, density_scale_factor, &
-      lsmooth_farray
+      lsmooth_farray,farray_smooth_width
 !
   namelist /run_pars/ &
       cvsid, ip, xyz0, xyz1, Lxyz, lperi, lpole, ncoarse, &
@@ -195,7 +195,7 @@ module Param_IO
       lenforce_maux_check, nv1_capitalvar, mskipvar, lread_oldsnap_mskipvar, &
       oned, twod, lpoint, mpoint, npoint, lpoint2, mpoint2, npoint2, &
       iproc_pt, iproc_p2, &
-      border_frac_x, border_frac_y, border_frac_z, lborder_hyper_diff, &
+      border_frac_x, border_frac_y, border_frac_z, border_frac_r, lborder_hyper_diff, &
       lcylinder_in_a_box, lsphere_in_a_box, ipencil_swap, &
       lpencil_requested_swap, lpencil_diagnos_swap, lpencil_check, &
       lpencil_check_small, lpencil_check_no_zeros, lpencil_check_diagnos_opti, &
@@ -205,7 +205,7 @@ module Param_IO
       lini_t_eq_zero, lini_t_eq_zero_once, &
       lav_smallx, xav_max, ldt_paronly, lweno_transport, &
       it_timing, har_spec, hav_spec, j_spec, jb_spec, ja_spec, b2_spec, &
-      lread_less, lread_nogrid, lformat, ltec, &
+      lread_less, lread_nogrid, lformat, ltec, lread_global, &
       llsode, lsplit_second, nu_sts, permute_sts, lfargo_advection, &
       ldynamical_diffusion, ldyndiff_useumax, re_mesh, lghostfold_usebspline, &
       lreset_seed, loutput_varn_at_exact_tsnap, lstop_on_ioerror, mailaddress, mailcmd, submithost,&

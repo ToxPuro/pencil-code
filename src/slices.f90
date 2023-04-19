@@ -24,6 +24,7 @@ module Slices
   real, target, dimension(:,:), allocatable :: slice_xy,slice_xy2,slice_xy3,slice_xy4
   real, target, dimension(:,:), allocatable :: slice_xz,slice_xz2,slice_yz,slice_r
 !
+!$omp threadprivate(tslice)
 contains
 !***********************************************************************
     subroutine wvid_prepare

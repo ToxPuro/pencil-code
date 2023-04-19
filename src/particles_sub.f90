@@ -34,6 +34,9 @@ module Particles_sub
     module procedure get_rhopswarm_block
   endinterface
 !
+  integer, dimension(mname) :: icount_sum=0
+  integer :: icount_integrate
+  !$omp threadprivate(icount_sum, icount_integrate)
   contains
 !***********************************************************************
     elemental integer function assign_species(ipar) result(p)
@@ -585,11 +588,10 @@ module Particles_sub
       integer :: iname
       logical, optional :: lsqrt, llog10
 !
-      integer, dimension(mname), save :: icount=0
 !
       if (iname/=0) then
 !
-        if (icount(iname)==0) then
+        if (icount_sum(iname)==0) then
           fname(iname)=0.0
           fweight(iname)=0.0
         endif
@@ -609,10 +611,10 @@ module Particles_sub
 !
 !  Reset sum when npar_loc particles have been considered.
 !
-        icount(iname)=icount(iname)+size(a)
-        if (icount(iname)==npar_loc) then
-          icount(iname)=0
-        elseif (icount(iname)>=npar_loc) then
+        icount_sum(iname)=icount_sum(iname)+size(a)
+        if (icount_sum(iname)==npar_loc) then
+          icount_sum(iname)=0
+        elseif (icount_sum(iname)>=npar_loc) then
           print*, 'sum_par_name: Too many particles entered this sub.'
           print*, 'sum_par_name: Can only do statistics on npar_loc particles!'
           call fatal_error('sum_par_name','')
@@ -662,11 +664,10 @@ module Particles_sub
       logical, optional :: lsqrt, llog10
       integer :: iname
 !
-      integer, save :: icount=0
 !
       if (iname/=0) then
 !
-        if (icount==0) fname(iname)=0
+        if (icount_integrate==0) fname(iname)=0
 !
         fname(iname)=fname(iname)+sum(a)
 !
@@ -685,10 +686,10 @@ module Particles_sub
 !
 !  Reset sum when npar_loc particles have been considered.
 !
-        icount=icount+size(a)
-        if (icount==npar_loc) then
-          icount=0
-        elseif (icount>=npar_loc) then
+        icount_integrate=icount_integrate+size(a)
+        if (icount_integrate==npar_loc) then
+          icount_integrate=0
+        elseif (icount_integrate>=npar_loc) then
           print*, 'integral_par_name: Too many particles entered this sub.'
           print*, 'integral_par_name: Can only do statistics on npar_loc particles!'
           call fatal_error('integral_par_name','')

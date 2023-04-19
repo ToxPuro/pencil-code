@@ -15,7 +15,12 @@ module GPU
   include 'gpu.h'
 
 contains
-
+!***********************************************************************
+    subroutine register_boundcond
+    endsubroutine register_boundcond 
+!***********************************************************************
+    subroutine notify_boundcond_done 
+    endsubroutine notify_boundcond_done
 !***********************************************************************
     subroutine initialize_GPU
 !

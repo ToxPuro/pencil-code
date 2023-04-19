@@ -16,6 +16,12 @@ module Equ
   public :: impose_floors_ceilings
 !
   private
+  real, pointer, dimension (:) :: p_fname,p_fname_keep
+  real, pointer, dimension (:,:) :: p_fnamer,p_fname_sound
+  integer, pointer, dimension (:,:) :: p_ncountsz
+  real, pointer, dimension (:,:,:) :: p_fnamex,p_fnamey,p_fnamez,p_fnamexy,p_fnamexz
+  real, pointer, dimension(:,:,:,:) :: p_fnamerz
+  real, pointer, dimension(:) :: p_dt1_max
 !
   contains
 !***********************************************************************
@@ -140,7 +146,7 @@ module Equ
 !  when radiation transfer of global ionization is calculated.
 !  This could in principle be avoided (but it not worth it now)
 !
-      early_finalize=test_nonblocking.or. &
+      early_finalize=  test_nonblocking.or. &
                      leos_ionization.or.lradiation_ray.or. &
                      lhyperviscosity_strict.or.lhyperresistivity_strict.or. &
                      ltestscalar.or.ltestfield.or.ltestflow.or. &
@@ -148,8 +154,9 @@ module Equ
                      lchemistry.or.lweno_transport .or. lbfield .or. & 
 !                     lslope_limit_diff .or. lvisc_smag .or. &
                      lvisc_smag .or. &
-                     lyinyang .or. & !!!.or.lgpu &
-                     ncoarse>1
+                     lyinyang .or. &   !!!
+                     ncoarse>1 .or. lgpu
+                     ! & .or. lgpu
 !
 !  Write crash snapshots to the hard disc if the time-step is very low.
 !  The user must have set crash_file_dtmin_factor>0.0 in &run_pars for
@@ -562,6 +569,7 @@ module Equ
       use Testflow
       use Testscalar
       use Viscosity, only: calc_pencils_viscosity
+      use omp_lib
 
       real, dimension (mx,my,mz,mfarray),intent(INOUT) :: f
       type (pencil_case)                ,intent(INOUT) :: p
@@ -597,6 +605,8 @@ module Equ
 !       if (.not. lpencil_check_at_work .and. necessary(imn)) &
 !       call check_ghosts_consistency (f, 'before calc_pencils_*')
                               call calc_pencils_hydro(f,p)
+
+ 
                               call calc_pencils_density(f,p)
         if (lpscalar)         call calc_pencils_pscalar(f,p)
         if (lascalar)         call calc_pencils_ascalar(f,p)
@@ -635,14 +645,118 @@ module Equ
 !  14-feb-17/MR: Carved out from pde.
 !  21-feb-17/MR: Moved all module-specific estimators of the (inverse) possible timestep 
 !                to the individual modules.
+!  30-mar-23/TP: Added multithreading through OpenMP declaratives and making needed variables threadprivate
+!                The main loop is also splitten into two parts in order to better overlap communication and computation
 !
+      use Chiral
+      use Chemistry
+      use Cosmicray
+      use CosmicrayFlux
+      use Density
+      use Diagnostics
+      use Dustvelocity
+      use Dustdensity
+      use Energy
+      use EquationOfState
+      use Forcing, only: calc_pencils_forcing, calc_diagnostics_forcing
+      use GhostFold, only: fold_df, fold_df_3points
+      use Gravity
+      use Heatflux
+      use Hydro
+      use Lorenz_gauge
+      use Magnetic
+      use NeutralDensity
+      use NeutralVelocity
+      use Particles_main
+      use Pscalar
+      use PointMasses
+      use Polymer
+      use Radiation
+      use Selfgravity
+      use Shear
+      use Solid_Cells
+      use Shock, only: calc_pencils_shock, calc_shock_profile, &
+                       calc_shock_profile_simple
+      use Special, only: calc_pencils_special, dspecial_dt
+      use Sub, only: sum_mn
+      use Ascalar
+      use Testfield
+      use Testflow
+      use Testscalar
+      use Viscosity, only: calc_pencils_viscosity
+!$    use Omp_lib
+
+      real, dimension (mx,my,mz,mfarray),intent(INOUT) :: f
+      real, dimension (mx,my,mz,mvar)   ,intent(OUT  ) :: df
+      type (pencil_case)                ,intent(INOUT) :: p
+      real, dimension(1)                ,intent(INOUT) :: mass_per_proc
+      logical                           ,intent(IN   ) :: early_finalize
+
+      real, dimension (nx,3) :: df_iuu_pencil
+      logical :: lcommunicate
+      !TP: Done because imn needs to be threadprivate and iterator can't be threadprivate in omp do
+      integer :: i
+!$    integer :: num_omp_ranks, omp_rank
+!
+!
+      lfirstpoint=.true.
+      lcommunicate=.not.early_finalize 
+
+!$ call OMP_set_num_threads(10)
+!$ call init_reduc_pointers()
+!$ call copy_module_variables_in()
+!$omp parallel firstprivate(p,df_iuu_pencil) 
+!$omp master
+ if (lcommunicate .and. necessary_imn<nyz) then
+                call finalize_isendrcv_bdry(f)
+                call boundconds_y(f)
+                call boundconds_z(f)
+                lcommunicate=.false.
+ else
+    lcommunicate=.false.
+        endif
+!$omp end master
+!$omp do 
+    do i=1,necessary_imn-1
+    !omp critical
+        call rhs_loop(f,df,p,mass_per_proc,early_finalize, nyz, i, df_iuu_pencil)
+    !omp end critical
+    enddo 
+!$omp end do nowait
+
+!TP wait for communication to be done
+    do while(lcommunicate)
+    enddo
+!$omp do 
+    do i=necessary_imn,nyz
+    !omp critical
+        call rhs_loop(f,df,p,mass_per_proc,early_finalize, nyz, i, df_iuu_pencil)
+!omp end critical
+    enddo 
+!$omp end do 
+!
+!$ call prep_finalize_thread_diagnos()
+!$omp critical
+!$  if(OMP_get_thread_num() /= 0) call thread_reductions()
+!$omp end critical
+!$omp end parallel
+!
+      if (ltime_integrals.and.llast) then
+        if (lhydro) call update_for_time_integrals_hydro
+      endif
+!
+    endsubroutine rhs_cpu
+!***********************************************************************
+    subroutine rhs_loop(f,df,p,mass_per_proc, early_finalize,nyz,i, df_iuu_pencil)
+!  30-mar-23/TP: Carved from rhs_cpu. Represents one iteration of the main loop in rhs_cpu. 
+!                Done since this eases multithreading debugging and eases splitting the loop into separate parts
       use Diagnostics
       use Chiral
       use Chemistry
       use Cosmicray
       use CosmicrayFlux
       use Density
-      use Diagnostics, only: prep_finalize_thread_diagnos
+      use Diagnostics, only: initialize_diagnostic_arrays, prep_finalize_thread_diagnos
       use Dustvelocity
       use Dustdensity
       use Energy
@@ -673,38 +787,30 @@ module Equ
       use Testflow
       use Testscalar
       use Viscosity, only: calc_pencils_viscosity
-!!$    use Omp_lib
+!$    use omp_lib
 
-      real, dimension (mx,my,mz,mfarray),intent(INOUT) :: f
+            real, dimension (mx,my,mz,mfarray),intent(INOUT) :: f
       real, dimension (mx,my,mz,mvar)   ,intent(OUT  ) :: df
       type (pencil_case)                ,intent(INOUT) :: p
       real, dimension(1)                ,intent(INOUT) :: mass_per_proc
       logical                           ,intent(IN   ) :: early_finalize
 
+      integer :: nyz
+      integer :: i
       real, dimension (nx,3) :: df_iuu_pencil
-      logical :: lcommunicate
-!$    integer :: num_omp_ranks, omp_rank
-!
-!$    num_omp_ranks = OMP_get_num_procs()
-!$    call OMP_set_num_threads(num_omp_ranks)
-!
-      lfirstpoint=.true.
-      lcommunicate=.not.early_finalize
-
-      mn_loop: do imn=1,nyz
-!
+        imn = i
         n=nn(imn)
         m=mm(imn)
 
         !if (imn_array(m,n)==0) cycle
-!
 !  Skip points not belonging to coarse grid.
 !
         lcoarse_mn=lcoarse.and.mexts(1)<=m.and.m<=mexts(2)
         if (lcoarse_mn) then
           lcoarse_mn=lcoarse_mn.and.ninds(0,m,n)>0
-          if (ninds(0,m,n)<=0) cycle
+          if (ninds(0,m,n)<=0) return 
         endif
+!omp critical
 !
 !  Store the velocity part of df array in a temporary array
 !  while solving the anelastic case.
@@ -721,14 +827,6 @@ module Equ
 !
 !  Make sure all ghost points are set.
 !
-        if (lcommunicate) then
-          if (necessary(imn)) then
-            call finalize_isendrcv_bdry(f)
-            call boundconds_y(f)
-            call boundconds_z(f)
-            lcommunicate=.false.
-          endif
-        endif
 !$      if (.false.) &
         call timing('pde','finished boundconds_z',mnloop=.true.)
 !
@@ -752,7 +850,7 @@ module Equ
           maxsrc=0.
         endif
 
-        call calc_all_pencils(f,p)
+        call calc_all_pencils(f,p)       
 !
 !  --------------------------------------------------------
 !  NO CALLS MODIFYING PENCIL_CASE PENCILS BEYOND THIS POINT
@@ -762,6 +860,7 @@ module Equ
 !  Note that pressure gradient is added in denergy_dt of noentropy to momentum,
 !  even if lentropy=.false.
 !
+        
         call duu_dt(f,df,p)
         call dlnrho_dt(f,df,p)
         call denergy_dt(f,df,p)
@@ -848,8 +947,8 @@ module Equ
         if (lforcing_cont) call calc_diagnostics_forcing(p)
 !
 !  Add and extra 'special' physics
-!
         if (lspecial) call dspecial_dt(f,df,p)
+        
 !
 !  Add radiative cooling and radiative pressure (for ray method)
 !
@@ -870,7 +969,8 @@ module Equ
         if (lparticles) call particles_pde_pencil(f,df,p)
 !
         if (lpointmasses) call pointmasses_pde_pencil(f,df,p)
-!
+        
+!if(ldiagnos .and. fname(12) > 0.) print*,fname(12)
 !  Call diagnostics that involves the full right hand side
 !  This must be done at the end of all calls that might modify df.
 !
@@ -912,6 +1012,7 @@ module Equ
           if (idiag_Rmesh3/=0) call max_mn_name(pi5_1*maxadvec/(maxdiffus3+tini),idiag_Rmesh3)
           call max_mn_name(maxadvec,idiag_maxadvec)
         endif
+         
 !
 !  Display derivative info
 !
@@ -953,16 +1054,9 @@ module Equ
 !
         headtt=.false.
         lfirstpoint=.false.
-!
-      enddo mn_loop
-!
-!!$     call prep_finalize_thread_diagnos
-!
-      if (ltime_integrals.and.llast) then
-        if (lhydro) call update_for_time_integrals_hydro
-      endif
-!
-    endsubroutine rhs_cpu
+!omp end critical
+ 
+    endsubroutine rhs_loop
 !***********************************************************************
     subroutine debug_imn_arrays
 !
@@ -1073,13 +1167,14 @@ module Equ
 !
       use Sub, only: quintic_step
       use Solid_Cells, only: freeze_solid_cells
+!$    use omp_lib
 
       real, dimension(mx,my,mz,mvar), intent(inout) :: df
       type (pencil_case) :: p
 
       logical, dimension(npencils) :: lpenc_loc
       real, dimension(nx) :: pfreeze
-      integer :: imn,iv
+      integer :: imn,iv,i
 !
       !if (lgpu) call freeze_gpu
 
@@ -1092,10 +1187,11 @@ module Equ
 !
       headtt = headt .and. lfirst .and. lroot
 !
-!$omp do private(p,pfreeze,iv,imn,n,m)
+!$omp parallel firstprivate(p,pfreeze,iv)
+!$omp do 
 !
-      do imn=1,nyz
-
+      do i=1,nyz
+        imn = i
         n=nn(imn)
         m=mm(imn)
         !if (imn_array(m,n)==0) cycle
@@ -1282,8 +1378,7 @@ module Equ
 
         if (ldensity.or.lhydro.or.lmagnetic.or.lenergy) maxadvec=maxadvec+sqrt(advec2_hypermesh)
 !
-!  Time step constraints from each module.
-!  (At the moment, magnetic and testfield use the same variable.)
+!  Time step constraints from each module. (At the moment, magnetic and testfield use the same variable.)
 !  cdt, cdtv, and cdtc are empirical non-dimensional coefficients.
 !
 !  Timestep constraint from advective terms.
@@ -1301,6 +1396,7 @@ module Equ
 !  Timestep combination from advection, diffusion and "source". 
 !
         dt1_max_loc = sqrt(dt1_advec**2 + dt1_diffus**2 + dt1_src**2)
+! write(88,*)  'imn,threadnum,dt1_max=',imn,omp_rank,dt1_max_loc,dt1_advec + dt1_diffus + dt1_src
 !
 !  time step constraint from the coagulation kernel
 !
@@ -1361,5 +1457,140 @@ module Equ
       endif
 
     endsubroutine set_dt1_max
+!***********************************************************************
+    subroutine init_reduc_pointers()
+
+!  30-mar-23/TP: Function for initialization of pointers used in thread_reductions. Called in rhs_cpu 
+      use Solid_Cells
+      use omp_lib
+
+      p_fname => fname
+      p_fname_keep => fname_keep
+      p_fnamer => fnamer
+      p_fname_sound => fname_sound
+      p_fnamex => fnamex
+      p_fnamey => fnamey
+      p_fnamez => fnamez
+      p_fnamexy => fnamexy
+      p_fnamexz => fnamexz
+      p_fnamerz => fnamerz
+      p_dt1_max => dt1_max
+      p_ncountsz => ncountsz
+      if(lsolid_cells) call solid_cells_init_reduc_pointers()
+    endsubroutine init_reduc_pointers
+!***********************************************************************
+    subroutine thread_reductions
+  
+!  30-mar-23/TP: Function for reducing accumulated variables inside rhs_cpu loop. Needed for multithreading since the threads compute them separately.
+    use Solid_Cells
+    use omp_lib
+
+    integer :: imn
+     
+      if(ldiagnos .and. allocated(fname)) then
+          do imn=1,size(fname)
+          if(any(inds_max_diags == imn) .and. fname(imn) /= 0.) then
+              p_fname(imn) = max(p_fname(imn),fname(imn))
+          else if(any(inds_sum_diags == imn)) then
+              p_fname(imn) = p_fname(imn) + fname(imn)
+          endif
+          enddo
+        endif
+     if(l1davgfirst) then
+          if(allocated(fnamex)) p_fnamex = p_fnamex + fnamex
+          if(allocated(fnamey)) p_fnamey = p_fnamey + fnamey
+          if(allocated(fnamez)) p_fnamez = p_fnamez + fnamez
+          if(allocated(fnamer)) p_fnamer = p_fnamer + fnamer
+      endif
+      if(l2davgfirst) then
+          if(allocated(fnamexy)) p_fnamexy = p_fnamexy + fnamexy
+          if(allocated(fnamexz)) p_fnamexz = p_fnamexz + fnamexz
+          if(allocated(fnamerz)) p_fnamerz = p_fnamerz + fnamerz
+      endif
+      ! fname_keep ??
+      if(allocated(fname_keep)) p_fname_keep = p_fname_keep + fname_keep
+      if(allocated(fname_sound)) p_fname_sound = p_fname_sound + fname_sound
+      if(allocated(ncountsz)) p_ncountsz = p_ncountsz + ncountsz
+      p_dt1_max = max(p_dt1_max,dt1_max)
+      if(lsolid_cells) call solid_cells_thread_reductions
+    endsubroutine thread_reductions
+!***********************************************************************
+    subroutine copy_module_variables_in()
+
+!  30-mar-23/TP: Function needed for intelligent way to copyin threadprivate variables that are needed in rhs_cpu.
+!                The current version is copying in way more than needed, this is really for not having to worry about while debugging TODO: educe the number of variables
+    use Diagnostics
+      use Chiral
+      use Chemistry
+      use Cosmicray
+      use CosmicrayFlux
+      use Density
+      use Diagnostics
+      use Dustvelocity
+      use Deriv
+      use Dustdensity
+      use Energy
+      use EquationOfState
+      use Forcing, only: calc_pencils_forcing, calc_diagnostics_forcing
+      use GhostFold, only: fold_df, fold_df_3points
+      use Gravity
+      use Heatflux
+      use Hydro
+      use Lorenz_gauge
+      use Magnetic
+      use NeutralDensity
+      use NeutralVelocity
+      use Particles_main
+      !use Particles_cdata
+      use Pscalar
+      use PointMasses
+      use Polymer
+      use Radiation
+      use Selfgravity
+      use Shear
+      use Shock, only: calc_pencils_shock, calc_shock_profile, &
+                       calc_shock_profile_simple
+      use Solid_Cells
+      use Special, only: calc_pencils_special, dspecial_dt
+      use Sub, only: sum_mn
+      use Ascalar
+      use Testfield
+      use Testflow
+      use Testscalar
+      use Viscosity, only: calc_pencils_viscosity
+!$    use omp_lib
+
+    if(lentropy) call entropy_copy_in()
+    ! if(lparticles) then
+    !   !$omp parallel copyin(kshepherd,kneighbour,ipar)
+    !   !$omp end parallel
+    ! endif
+    if(lsolid_cells) call copyin_solid_cells()
+    if(ldustvelocity) call dust_velocity_copy_in()
+    if(lhydro) call copyin_hydro()
+    call eos_copy_in()
+    !$omp parallel copyin(imn,lcoarse_mn,advec_cs2,maxadvec,advec2,advec2_hypermesh,lfirstpoint,fname,fnamer,fname_sound,&
+    !$omp fnamex,fnamey,fnamez,fnamexz,fnamerz,headtt,fname_half,fname_keep,fnamexy,dt1_max,inds_sum_diags,inds_max_diags, &
+    !$omp maxdiffus,maxdiffus2,maxdiffus3,maxsrc,costh,nvar,naux,naux_com,nglobal,iux,iu0x,iaxtest, iaztest, reac_dust,&
+    !$omp dxyz_2,fweight,dxyz_4,dxyz_6,dVol,dxmax_pencil,dxmin_pencil,drcyl,dline_1,lequidist,x0,y0,z0,Lx,Ly,Lz,alpha_ts,&
+    !$omp beta_ts,lchemonly,lsnap_down,lwrite_sound,lslope_limit_diff,leos_idealgas,ilnrho,irho,mm,nn,necessary,&
+    !$omp imn_array,lpencil_check_at_work,nnamerz,ncoords_sound,tdiagnos,t1ddiagnos,t2davgfirst,sound_coords_list,ncountsz,&
+    !$omp cform_sound,cnamerz,ldiagnos,l2davgfirst,l1davgfirst,l1dphiavg,errormsg,&
+    !$omp mailaddress,aux_var,aux_count,lisotropic_advection,&
+    !$omp lgravz,lgravr,seed,iuud,iudx,iudy,iudz,ind,imd,idc,idcj,&
+    !$omp bcx,bcy,bcz,bcx12,bcy12,bcz12,x,dx_1,dx_tilde,xprim,y,z,dx,dy,r_mn,r1_mn,&
+    !$omp r2_mn,sinth,sin1th,sin2th,cotth,sinph,cosph,cos1th,tanth,rcyl_mn,rcyl_mn1,&
+    !$omp rcyl_mn2,xyz_star,nt,ldownsampling,ip,lgravr_gas,&
+    !$omp lgravr_neutrals,lgravr_dust,iuxt,iuyt,iuzt,ivisc_forcx,ivisc_forcy,&
+    !$omp ivisc_forcz,i_adv_derx,i_adv_dery,iuu_flucx,iuu_sphr,headt,varname,&
+    !$omp lfirst,ltime_integrals,deltay,iapn,test_nonblocking,trelax_poly,ip11,ip21,ip31,&
+    !$omp iss, iss_run_aver)
+    !here removed one's varname
+    !copyin(maxdiffus,maxdiffus2,maxdiffus3,maxsrc) 
+    !copyin(der2_coef0,der2_coef2)
+    !omp copyin(dt1_max,imn,lcoarse_mn,advec_cs2,maxadvec,advec2,advec2_hypermesh,maxdiffus,maxdiffus2,maxdiffus3,maxsrc,dt1_max,lfirstpoint,llastpoint,iaztest, reac_dust, dxyz_2)
+    !omp parallel copyin(llastpoint,lfirstpoint,fname,fnamer,fname_sound,fnamex,fnamey,fnamez,fnamexz,fnamerz,headtt,fname_half,fname_keep,fnamexy,dt1_max,inds_sum_diags,inds_max_diags)
+    !$omp end parallel
+    endsubroutine copy_module_variables_in
 !***********************************************************************
 endmodule Equ

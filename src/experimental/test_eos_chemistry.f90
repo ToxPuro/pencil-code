@@ -1746,4 +1746,9 @@ module EquationOfState
 
     endsubroutine pushpars2c
 !***********************************************************************
+    subroutine eos_copy_in()
+    endsubroutine eos_copy_in
+!**********************************************************************
+
+
 endmodule EquationOfState

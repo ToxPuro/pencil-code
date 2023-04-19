@@ -108,6 +108,7 @@ module PointMasses
   integer, dimension(nqpar)   :: idiag_period=0,idiag_torque=0
   integer                     :: idiag_totenergy=0,idiag_mdot_pt=0
 !
+  !$omp threadprivate(dfq)
   contains
 !***********************************************************************
     subroutine register_pointmasses()
@@ -189,7 +190,7 @@ module PointMasses
 !  27-aug-06/wlad: adapted
 !
       use FArrayManager
-      use SharedVariables
+      use SharedVariables, only: get_shared_variable
 !
       real, dimension (mx,my,mz,mfarray) :: f
       logical :: lxpresent,lypresent,lzpresent,l2Dcyl,l2Dsph
@@ -202,8 +203,7 @@ module PointMasses
         if (pmass(ks)/=0.0) then
           fq(ks,imass)=pmass(ks)
         else
-          call fatal_error("initialize_pointmasses",&
-                "one of the bodies has zero mass")  
+          call fatal_error("initialize_pointmasses","one of the bodies has zero mass")  
         endif
       enddo
 !
@@ -787,7 +787,7 @@ module PointMasses
 !
       use Diagnostics
       use Sub
-      use Mpicomm, only: mpireduce_sum
+      use Mpicomm, only: mpireduce_sum  !not needed
 !
       real, dimension (mx,my,mz,mfarray) :: f
       real, dimension (mx,my,mz,mvar) :: df
@@ -2304,6 +2304,14 @@ module PointMasses
         call mpireduce_sum(sum_loc(j),accg(j))
       enddo
 !
+!  Since this is part of the mn loop, the final outcome
+!  of this type of communication should depend on the processor layout.
+!  At the moment, no auto-test seems to use this though.
+!  For further questions, please email Matthias Rheinhardt <matthias.rheinhardt@aalto.fi>
+!  or Axel Brandenburg <brandenb@nordita.org>.
+!
+      call fatal_error('pointmasses: integrate_gasgravity', 'incorrect communication')
+!
 !  Broadcast particle acceleration
 !
       call mpibcast_real(accg,3)
@@ -2511,7 +2519,6 @@ module PointMasses
 !
       use Mpicomm
       use General, only: random_number_wrapper
-      use SharedVariables, only: get_shared_variable
 !
       integer :: k
       character (len=2*bclen+1) :: boundx, boundy, boundz

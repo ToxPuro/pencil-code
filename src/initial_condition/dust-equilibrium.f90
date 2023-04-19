@@ -91,6 +91,7 @@ module InitialCondition
   namelist /initial_condition_pars/ Hd,OOg,eps_dtog,vdampl_dust,tau, &
        ldragforce_gas,input_fac, cb20
 !
+!$omp threadprivate(tau)
   contains
 !***********************************************************************
     subroutine register_initial_condition()
