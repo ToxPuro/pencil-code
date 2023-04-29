@@ -1,0 +1,18 @@
+hostdefine BLUR_KERNEL_AVAILABLE (1)
+Field IMAGE0
+
+#define COEFF (1. / 7.)
+
+Stencil blur {
+  [-1][0][0] = COEFF,
+  [1][0][0]  = COEFF,
+  [0][-1][0] = COEFF,
+  [0][1][0]  = COEFF,
+  [0][0][-1] = COEFF,
+  [0][0][1]  = COEFF,
+  [0][0][0]  = COEFF
+}
+
+Kernel blur_kernel() {
+  write(IMAGE0, blur(IMAGE0))
+}

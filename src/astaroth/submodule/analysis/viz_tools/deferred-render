@@ -1,0 +1,87 @@
+#!/bin/bash
+
+print_usage(){
+    echo "$0 --input <input_dir> --output <output_dir> --dims <x,y> --delay <seconds> sbatch_file"
+}
+
+OPTS=`getopt -o i:o:d:h -l input:,output:,dims:,delay:,help -n "$0"  -- "$@"`
+if [ $? != 0 ] ; then echo "Failed to parse args" >&2 ; exit 1 ; fi
+
+eval set -- "$OPTS"
+
+input_dir=output-slices
+output_dir=output-slices-rendered
+delay=10
+
+simulation_running=0
+
+while true;do
+case "$1" in
+-h|--help)
+        print_usage
+        exit 0
+        ;;
+-i|--input)
+	shift
+	input_dir=$1
+	;;
+-o|--output)
+        shift
+        output_dir=$1
+        ;;
+-d|--dims)
+        shift
+	OLDIFS=$IFS
+	IFS=','
+	read -a dims <<< "$1"
+	IFS=$OLDIFS
+        ;;
+--delay)
+	shift
+	delay=$1
+	;;
+--)
+        shift
+        break
+        ;;
+*)
+        break
+        ;;
+esac
+shift
+done
+
+sbatch_file=$1
+
+if [[ -n "$dims" ]] && [[ ${#dims[@]} -ne 2 ]]; then
+    printf "Error: please give dims as two values separated by a comma, e.g. --dims=128,256\n"
+    print_usage
+    exit 1
+fi
+
+if [[ -z "$input_dir" ]] ;then
+    printf "Error: input_dir is not defined:\"$input_dir\"\n"
+    print_usage
+    exit 1
+fi
+
+if [[ -z "$output_dir" ]] ;then
+    printf "Error: output_dir is not defined:\"$output_dir\"\n"
+    print_usage
+    exit 1
+fi
+
+
+sim_job_id=$(sbatch --parsable $sbatch_file)
+printf "Submitted simulation batch job $sim_job_id\n"
+
+script_dir=$(realpath $(dirname "${BASH_SOURCE[0]}"))
+if [[ -z "$dims" ]]; then
+    echo "Rendering script will decode slice dimensions from filenames"
+    dims_arg=""
+else
+    dims_arg="--dims ${dims[0]},${dims[1]}"
+    echo "Rendering script will use dimensions ${dims[0]} ${dims[1]} as backup if it can't decode slice dims from filename."
+fi
+render_job_id=$(sbatch --parsable --begin=now+$delay ${script_dir}/render_frames_deferred.batch --input $input_dir --output $output_dir $dims_arg --sim-job $sim_job_id --delay $delay )
+printf "Submitted secondary recurring batch job to do deferred rendering $render_job_id\n"

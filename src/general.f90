@@ -234,7 +234,6 @@ module General
       ipx = modulo(rank,nprocx)
       ipy = modulo(rank/nprocx,nprocy)
       ipz = rank/(nprocx*nprocy)
-
     endsubroutine find_proc_coords_general
 !***********************************************************************
     subroutine setup_mm_nn

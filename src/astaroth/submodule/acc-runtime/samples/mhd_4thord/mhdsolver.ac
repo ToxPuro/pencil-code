@@ -1,0 +1,555 @@
+int AC_step_number
+real AC_dt
+
+/*
+real AC_cs_sound, AC_cp_sound
+real AC_gamma, AC_nu_visc, AC_zeta, AC_eta
+real AC_lnrho0, AC_mu0, AC_lnT0
+*/
+// Note: not used by mhdsolver.ac at the moment (src/utils/modelsolver.c does)
+hostdefine AC_INTEGRATION_ENABLED // Enables acIntegrate() and other non-generic library functions
+hostdefine STENCIL_ORDER (4)
+hostdefine LDENSITY (1)
+hostdefine LHYDRO (1)
+hostdefine LMAGNETIC (1)
+hostdefine LENTROPY (1)
+hostdefine AC_THERMAL_CONDUCTIVITY (0.001) // TODO: make an actual config parameter
+hostdefine R_PI (AC_REAL_PI)
+
+Field VTXBUF_LNRHO, VTXBUF_UUX, VTXBUF_UUY, VTXBUF_UUZ
+
+#if LMAGNETIC
+Field VTXBUF_AX, VTXBUF_AY, VTXBUF_AZ
+#endif
+
+#if LENTROPY 
+Field VTXBUF_ENTROPY
+#endif
+
+
+// Additional params needed by standalone & standalone_mpi
+// Int params
+int AC_max_steps
+int AC_save_steps
+int AC_bin_steps
+int AC_start_step
+
+real AC_dsx, AC_dsy, AC_dsz // WARNING UNUSED! NEED TO BE COMPILE-TIME CONSTANTS
+
+#define DSX (0.04908738521)
+#define DSY (0.04908738521)
+#define DSZ (0.04908738521)
+#define AC_inv_dsx (1. / DSX)
+#define AC_inv_dsy (1. / DSY)
+#define AC_inv_dsz (1. / DSZ)
+
+// Real params
+real AC_max_time
+// Spacing
+real AC_dsmin
+// physical grid
+real AC_xlen
+real AC_ylen
+real AC_zlen
+real AC_xorig
+real AC_yorig
+real AC_zorig
+// Physical units
+real AC_unit_density
+real AC_unit_velocity
+real AC_unit_length
+real AC_unit_magnetic
+// properties of gravitating star
+real AC_star_pos_x
+real AC_star_pos_y
+real AC_star_pos_z
+real AC_M_star
+// properties of sink particle
+real AC_sink_pos_x
+real AC_sink_pos_y
+real AC_sink_pos_z
+real AC_M_sink
+real AC_M_sink_init
+real AC_M_sink_Msun
+real AC_soft
+real AC_accretion_range
+real AC_switch_accretion
+//  Run params
+real AC_cdt
+real AC_cdtv
+real AC_cdts
+real AC_nu_visc
+real AC_cs_sound
+real AC_eta
+real AC_mu0
+real AC_cp_sound
+real AC_gamma
+real AC_cv_sound
+real AC_lnT0
+real AC_lnrho0
+real AC_zeta
+real AC_trans
+real AC_nu_shock
+
+//  Parameters for generic boundary conditions, this is a dummy variable for testing, please use different ones for each field
+real AC_boundary_derivative
+
+//  Parameters only used in boundary conditions at the moment
+//  If you feel they should be elsewhere, please move them
+real AC_hcond0_kramers
+real AC_n_kramers
+real AC_sigma_SBt
+real AC_chi
+real AC_chi_t
+real AC_chi_t_prof1
+
+//  Other
+real AC_bin_save_t
+//  Initial condition params
+real AC_ampl_lnrho
+real AC_ampl_uu
+real AC_angl_uu
+real AC_lnrho_edge
+real AC_lnrho_out
+real AC_ampl_aa
+real AC_init_k_wave
+real AC_init_sigma_hel
+//  Forcing parameters. User configured.
+real AC_forcing_magnitude
+real AC_relhel
+real AC_kmin
+real AC_kmax
+real AC_switch_forcing
+//  Forcing parameters. Set by the generator.
+real AC_forcing_phase
+real AC_k_forcex
+real AC_k_forcey
+real AC_k_forcez
+real AC_kaver
+real AC_ff_hel_rex
+real AC_ff_hel_rey
+real AC_ff_hel_rez
+real AC_ff_hel_imx
+real AC_ff_hel_imy
+real AC_ff_hel_imz
+//  Additional helper params  //  (deduced from other params do not set these directly!)
+real AC_G_const
+real AC_GM_star
+real AC_unit_mass
+real AC_sq2GM_star
+real AC_cs2_sound
+//
+real AC_current_time
+
+#define UU Field3(VTXBUF_UUX, VTXBUF_UUY, VTXBUF_UUZ)
+
+#if LMAGNETIC
+#define AA Field3(VTXBUF_AX, VTXBUF_AY, VTXBUF_AZ)
+#endif
+
+#define DER1_2 (-1. / 12.)
+#define DER1_1 ( 8. / 12.)
+#define DER1_0 ( 0. / 12.)
+
+#define DER2_2 ( -1. / 12.)
+#define DER2_1 ( 16. / 12.)
+#define DER2_0 (-30. / 12.)
+
+#define DERX_2 (-27. / 720.)
+#define DERX_1 (270. / 720.)
+#define DERX_0 (0)
+
+
+Stencil value {
+    [0][0][0] = 1
+}
+
+Stencil derx {
+    [0][0][-2] = -AC_inv_dsx * DER1_2,
+    [0][0][-1] = -AC_inv_dsx * DER1_1,
+    [0][0][1]  = AC_inv_dsx * DER1_1,
+    [0][0][2]  = AC_inv_dsx * DER1_2
+}
+
+Stencil dery {
+    [0][-2][0] = -AC_inv_dsy * DER1_2,
+    [0][-1][0] = -AC_inv_dsy * DER1_1,
+    [0][1][0]  = AC_inv_dsy * DER1_1,
+    [0][2][0]  = AC_inv_dsy * DER1_2
+}
+
+Stencil derz {
+    [-2][0][0] = -AC_inv_dsz * DER1_2,
+    [-1][0][0] = -AC_inv_dsz * DER1_1,
+    [1][0][0]  = AC_inv_dsz * DER1_1,
+    [2][0][0]  = AC_inv_dsz * DER1_2
+}
+
+Stencil derxx {
+    [0][0][-2] = AC_inv_dsx * AC_inv_dsx * DER2_2,
+    [0][0][-1] = AC_inv_dsx * AC_inv_dsx * DER2_1,
+    [0][0][0]  = AC_inv_dsx * AC_inv_dsx * DER2_0,
+    [0][0][1]  = AC_inv_dsx * AC_inv_dsx * DER2_1,
+    [0][0][2]  = AC_inv_dsx * AC_inv_dsx * DER2_2
+}
+
+Stencil deryy {
+    [0][-2][0] = AC_inv_dsy * AC_inv_dsy * DER2_2,
+    [0][-1][0] = AC_inv_dsy * AC_inv_dsy * DER2_1,
+    [0][0][0]  = AC_inv_dsy * AC_inv_dsy * DER2_0,
+    [0][1][0]  = AC_inv_dsy * AC_inv_dsy * DER2_1,
+    [0][2][0]  = AC_inv_dsy * AC_inv_dsy * DER2_2
+}
+
+Stencil derzz {
+    [-2][0][0] = AC_inv_dsz * AC_inv_dsz * DER2_2,
+    [-1][0][0] = AC_inv_dsz * AC_inv_dsz * DER2_1,
+    [0][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_0,
+    [1][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_1,
+    [2][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_2
+}
+
+Stencil derxy {
+    [0][0][0] = AC_inv_dsx * AC_inv_dsy * 0.
+    /*
+    [-2][-2][-2] = 1.,
+    [-2][-2][-1] = 1.,
+    [-2][-2][0] = 1.,
+    [-2][-2][1] = 1.,
+    [-2][-2][2] = 1.,
+    //
+    [-2][-1][-2] = 1.,
+    [-2][-1][-1] = 1.,
+    [-2][-1][0] = 1.,
+    [-2][-1][1] = 1.,
+    [-2][-1][2] = 1.,
+    //
+    [-2][0][-2] = 1.,
+    [-2][0][-1] = 1.,
+    [-2][0][0] = 1.,
+    [-2][0][1] = 1.,
+    [-2][0][2] = 1.,
+    //
+    [-2][1][-2] = 1.,
+    [-2][1][-1] = 1.,
+    [-2][1][0] = 1.,
+    [-2][1][1] = 1.,
+    [-2][1][2] = 1.,
+    //
+    [-2][2][-2] = 1.,
+    [-2][2][-1] = 1.,
+    [-2][2][0] = 1.,
+    [-2][2][1] = 1.,
+    [-2][2][2] = 1.
+    */
+}
+
+Stencil derxz {
+    [0][0][0] = AC_inv_dsx * AC_inv_dsz * 0.
+    /*
+    [-2][-2][-2] = 1.,
+    [-2][-2][-1] = 1.,
+    [-2][-2][0] = 1.,
+    [-2][-2][1] = 1.,
+    [-2][-2][2] = 1.,
+    //
+    [-1][-2][-2] = 1.,
+    [-1][-2][-1] = 1.,
+    [-1][-2][0] = 1.,
+    [-1][-2][1] = 1.,
+    [-1][-2][2] = 1.,
+    //
+    [0][-2][-2] = 1.,
+    [0][-2][-1] = 1.,
+    [0][-2][0] = 1.,
+    [0][-2][1] = 1.,
+    [0][-2][2] = 1.,
+    //
+    [1][-2][-2] = 1.,
+    [1][-2][-1] = 1.,
+    [1][-2][0] = 1.,
+    [1][-2][1] = 1.,
+    [1][-2][2] = 1.,
+    //
+    [2][-2][-2] = 1.,
+    [2][-2][-1] = 1.,
+    [2][-2][0] = 1.,
+    [2][-2][1] = 1.,
+    [2][-2][2] = 1.
+    */
+}
+
+Stencil deryz {
+    [0][0][0] = AC_inv_dsy * AC_inv_dsz * 0.
+    /*
+    [-2][-2][-2] = 1.,
+    [-2][-1][-2] = 1.,
+    [-2][0][-2] = 1.,
+    [-2][1][-2] = 1.,
+    [-2][2][-2] = 1.,
+    //
+    [-1][-2][-2] = 1.,
+    [-1][-1][-2] = 1.,
+    [-1][0][-2] = 1.,
+    [-1][1][-2] = 1.,
+    [-1][2][-2] = 1.,
+    //
+    [0][-2][-2] = 1.,
+    [0][-1][-2] = 1.,
+    [0][0][-2] = 1.,
+    [0][1][-2] = 1.,
+    [0][2][-2] = 1.,
+    //
+    [1][-2][-2] = 1.,
+    [1][-1][-2] = 1.,
+    [1][0][-2] = 1.,
+    [1][1][-2] = 1.,
+    [1][2][-2] = 1.,
+    //
+    [2][-2][-2] = 1.,
+    [2][-1][-2] = 1.,
+    [2][0][-2] = 1.,
+    [2][1][-2] = 1.,
+    [2][2][-2] = 1.
+    */
+}
+
+vecvalue(v) {
+    return real3(value(v.x), value(v.y), value(v.z))
+}
+
+vecvalue_abs(v) {
+    return real3(fabs(value(v.x)), fabs(value(v.y)), fabs(value(v.z)))
+}
+
+gradient(s) {
+    return real3(derx(s), dery(s), derz(s))
+}
+
+gradients(v) {
+    return Matrix(gradient(v.x), gradient(v.y), gradient(v.z))
+}
+
+divergence(v) {
+    return derx(v.x) + dery(v.y) + derz(v.z)
+}
+
+curl(v) {
+    return real3(dery(v.z) - derz(v.y), derz(v.x) - derx(v.z), derx(v.y) - dery(v.x))
+}
+
+laplace(s) {
+    return derxx(s) + deryy(s) + derzz(s)
+}
+
+veclaplace(v) {
+    return real3(laplace(v.x), laplace(v.y), laplace(v.z))
+}
+
+#if LMAGNETIC
+induction() {
+    return cross(vecvalue(UU), curl(AA)) + AC_eta * veclaplace(AA)
+}
+#endif
+
+stress_tensor(v) {
+    Matrix S
+
+    S.data[0][0] = (2.0 / 3.0) * derx(v.x) - (1.0 / 3.0) * (dery(v.y) + derz(v.z))
+    S.data[0][1] = (1.0 / 2.0) * (dery(v.x) + derx(v.y))
+    S.data[0][2] = (1.0 / 2.0) * (derz(v.x) + derx(v.z))
+
+    S.data[1][0] = S.data[0][1]
+    S.data[1][1] = (2.0 / 3.0) * dery(v.y) - (1.0 / 3.0) * (derx(v.x) + derz(v.z))
+    S.data[1][2] = (1.0 / 2.0) * (derz(v.y) + dery(v.z))
+
+    S.data[2][0] = S.data[0][2]
+    S.data[2][1] = S.data[1][2]
+    S.data[2][2] = (2.0 / 3.0) * derz(v.z) - (1.0 / 3.0) * (derx(v.x) + dery(v.y))
+
+    return S
+}
+
+gradient_of_divergence(v) {
+    return real3(
+        derxx(v.x) + derxy(v.y) + derxz(v.z),
+        derxy(v.x) + deryy(v.y) + deryz(v.z),
+        derxz(v.x) + deryz(v.y) + derzz(v.z)
+    )
+}
+
+contract(mat) {
+    return dot(mat.row(0), mat.row(0)) +
+           dot(mat.row(1), mat.row(1)) +
+           dot(mat.row(2), mat.row(2))
+}
+
+continuity() {
+    return -dot(vecvalue(UU), gradient(VTXBUF_LNRHO)) - divergence(UU)
+}
+
+momentum() {
+    S = stress_tensor(UU)
+    cs2_sound = AC_cs_sound * AC_cs_sound
+#if LENTROPY 
+    cs2 = cs2_sound * exp(AC_gamma * value(VTXBUF_ENTROPY) / AC_cp_sound + (AC_gamma - 1.) * (value(VTXBUF_LNRHO) - AC_lnrho0))
+#else
+    cs2 = cs2_sound
+#endif
+
+#if LMAGNETIC
+    j = (1. / AC_mu0) * (gradient_of_divergence(AA) - veclaplace(AA))
+    B = curl(AA)
+    inv_rho = 1. / exp(value(VTXBUF_LNRHO))
+#endif
+
+    mom = - gradients(UU) * vecvalue(UU)
+#if LENTROPY 
+          - cs2 * ((1. / AC_cp_sound) * gradient(VTXBUF_ENTROPY) + gradient(VTXBUF_LNRHO))
+#else
+          - cs2 * gradient(VTXBUF_LNRHO)
+#endif
+#if LMAGNETIC
+          + inv_rho * cross(j, B)
+#endif
+          + AC_nu_visc * (veclaplace(UU) + (1. / 3.) * gradient_of_divergence(UU)
+                       + 2. * S * gradient(VTXBUF_LNRHO))
+          + AC_zeta * gradient_of_divergence(UU)
+
+    return mom
+}
+
+#if LENTROPY 
+lnT() {
+    return AC_lnT0
+         + AC_gamma * value(VTXBUF_ENTROPY) / AC_cp_sound
+         + (AC_gamma - 1.) * (value(VTXBUF_LNRHO) - AC_lnrho0)
+}
+
+heat_conduction() {
+    inv_AC_cp_sound = 1. / AC_cp_sound
+    grad_ln_chi = -gradient(VTXBUF_LNRHO)
+
+    first_term = AC_gamma * inv_AC_cp_sound * laplace(VTXBUF_ENTROPY) + (AC_gamma - 1.) * laplace(VTXBUF_LNRHO)
+    second_term = AC_gamma * inv_AC_cp_sound * gradient(VTXBUF_ENTROPY) + (AC_gamma - 1.) * gradient(VTXBUF_LNRHO)
+    third_term = AC_gamma * (inv_AC_cp_sound * gradient(VTXBUF_ENTROPY) + gradient(VTXBUF_LNRHO)) + grad_ln_chi
+
+    chi = AC_THERMAL_CONDUCTIVITY / (exp(value(VTXBUF_LNRHO)) * AC_cp_sound)
+
+    return AC_cp_sound * chi * (first_term + dot(second_term, third_term))
+}
+
+entropy() {
+    S = stress_tensor(UU)
+    inv_pT = 1. / (exp(value(VTXBUF_LNRHO)) * exp(lnT()))
+#if LMAGNETIC
+    j = (1. / AC_mu0) * (gradient_of_divergence(AA) - veclaplace(AA))
+#else
+    j = real3(0,0,0)
+#endif
+    entshock = 0.0
+    RHS = (0) - (0) + AC_eta * AC_mu0 * dot(j, j) +
+                       2. * exp(value(VTXBUF_LNRHO)) * AC_nu_visc * contract(S) +
+                       entshock +
+                       AC_zeta * exp(value(VTXBUF_LNRHO)) * divergence(UU) * divergence(UU)
+
+    return -dot(vecvalue(UU), gradient(VTXBUF_ENTROPY)) + inv_pT * RHS + heat_conduction()
+}
+#endif
+
+rk3(s0, s1, roc) {
+    /*
+    real alpha = 0., -5./9., -153. / 128.
+    real beta = 1. / 3., 15./ 16., 8. / 15.
+
+    // This conditional has abysmal performance on AMD for some reason, better performance on NVIDIA than the workaround below
+    if AC_step_number > 0 {
+        return s1 + beta[AC_step_number] * ((alpha[AC_step_number] / beta[AC_step_number - 1]) * (s1 - s0) + roc * AC_dt)
+    } else {
+        return s1 + beta[AC_step_number] * roc * AC_dt
+    }
+    */
+    // Workaround
+    real alpha = 0., -5./9., -153. / 128.
+    real beta  = 1., 1. / 3., 15./ 16., 8. / 15.
+    return s1 + beta[AC_step_number + 1] * ((alpha[AC_step_number] / beta[AC_step_number]) * (s1 - s0) + roc * AC_dt)
+}
+
+
+Kernel singlepass_solve() {
+    write(VTXBUF_LNRHO, rk3(previous(VTXBUF_LNRHO), value(VTXBUF_LNRHO), continuity()))
+
+#if LENTROPY 
+    write(VTXBUF_ENTROPY, rk3(previous(VTXBUF_ENTROPY), value(VTXBUF_ENTROPY), entropy()))
+#endif 
+
+    mom = momentum()
+
+    write(VTXBUF_UUX, rk3(previous(VTXBUF_UUX), value(VTXBUF_UUX), mom.x))
+    write(VTXBUF_UUY, rk3(previous(VTXBUF_UUY), value(VTXBUF_UUY), mom.y))
+    write(VTXBUF_UUZ, rk3(previous(VTXBUF_UUZ), value(VTXBUF_UUZ), mom.z))
+
+#if LMAGNETIC
+    ind = induction()
+    write(VTXBUF_AX, rk3(previous(VTXBUF_AX), value(VTXBUF_AX), ind.x))
+    write(VTXBUF_AY, rk3(previous(VTXBUF_AY), value(VTXBUF_AY), ind.y))
+    write(VTXBUF_AZ, rk3(previous(VTXBUF_AZ), value(VTXBUF_AZ), ind.z))
+#endif
+}
+
+rk3_intermediate(w, roc) {
+    real alpha = 0., -5./9., -153. / 128.
+
+    // return alpha[AC_step_number] * w + roc * AC_dt
+
+    if AC_step_number > 0 {
+        return alpha[AC_step_number] * w + roc * AC_dt
+    } else {
+        return roc * AC_dt
+    }
+}
+
+rk3_final(f, w) {
+    real beta = 1. / 3., 15./ 16., 8. / 15.
+    return f + beta[AC_step_number] * w
+}
+
+
+Kernel twopass_solve_intermediate() {
+    write(VTXBUF_LNRHO, rk3_intermediate(previous(VTXBUF_LNRHO), continuity()))
+
+    #if LENTROPY 
+    write(VTXBUF_ENTROPY, rk3_intermediate(previous(VTXBUF_ENTROPY), entropy()))
+    #endif
+
+    mom = momentum()
+    write(VTXBUF_UUX, rk3_intermediate(previous(VTXBUF_UUX), mom.x))
+    write(VTXBUF_UUY, rk3_intermediate(previous(VTXBUF_UUY), mom.y))
+    write(VTXBUF_UUZ, rk3_intermediate(previous(VTXBUF_UUZ), mom.z))
+
+    #if LMAGNETIC
+    ind = induction()
+    write(VTXBUF_AX, rk3_intermediate(previous(VTXBUF_AX), ind.x))
+    write(VTXBUF_AY, rk3_intermediate(previous(VTXBUF_AY), ind.y))
+    write(VTXBUF_AZ, rk3_intermediate(previous(VTXBUF_AZ), ind.z))
+    #endif
+}
+
+Kernel twopass_solve_final() {
+    write(VTXBUF_LNRHO, rk3_final(previous(VTXBUF_LNRHO), value(VTXBUF_LNRHO)))
+
+    #if LENTROPY 
+    write(VTXBUF_ENTROPY, rk3_final(previous(VTXBUF_ENTROPY), value(VTXBUF_ENTROPY)))
+    #endif
+
+    forcing_step = real3(0.0, 0.0, 0.0)
+    write(VTXBUF_UUX, rk3_final(previous(VTXBUF_UUX), value(VTXBUF_UUX)) + forcing_step.x)
+    write(VTXBUF_UUY, rk3_final(previous(VTXBUF_UUY), value(VTXBUF_UUY)) + forcing_step.x)
+    write(VTXBUF_UUZ, rk3_final(previous(VTXBUF_UUZ), value(VTXBUF_UUZ)) + forcing_step.x)
+
+    #if LMAGNETIC
+    write(VTXBUF_AX, rk3_final(previous(VTXBUF_AX), value(VTXBUF_AX)))
+    write(VTXBUF_AY, rk3_final(previous(VTXBUF_AY), value(VTXBUF_AY)))
+    write(VTXBUF_AZ, rk3_final(previous(VTXBUF_AZ), value(VTXBUF_AZ)))
+    #endif
+}

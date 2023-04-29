@@ -1,0 +1,149 @@
+#!/bin/bash
+#SBATCH --job-name=render_frames
+#SBATCH --account=project_462000120
+#SBATCH --partition=small
+#SBATCH --time=00:15:00
+#SBATCH --ntasks=1
+
+print_usage(){
+    echo "$0 --input <input_dir> --output <output_dir> --dims <x,y> --sim-job <SLURM JOB ID> --delay <seconds> --resubmit"
+}
+
+OPTS=`getopt -o i:o:d:s:rh -l input:,output:,dims:,sim-job:,delay:,resubmit,help -n "$0"  -- "$@"`
+if [ $? != 0 ] ; then echo "Failed to parse args" >&2 ; exit 1 ; fi
+
+eval set -- "$OPTS"
+
+input_dir=output-slices
+output_dir=output-slices-rendered
+delay=300
+countdown=1
+resubmit=0
+
+simulation_running=0
+
+while true;do
+case "$1" in
+-h|--help)
+        print_usage
+        exit 0
+        ;;
+-i|--input)
+	shift
+	input_dir=$1
+-o|--output)
+        shift
+        output_dir=$1
+        ;;
+-d|--dims)
+        shift
+	OLDIFS=$IFS
+	IFS=','
+	read -a dims <<< "$1"
+	IFS=$OLDIFS
+        ;;
+-s|--sim-job)
+	shift
+	sim_job_id=$1
+	;;
+--delay)
+	shift
+	delay=$1
+	;;
+-r|--resubmit)
+	shift
+	resubmit=1
+--)
+        shift
+        break
+        ;;
+*)
+        break
+        ;;
+esac
+shift
+done
+
+if [[ ${#dims[@]} -ne 2 ]]; then
+    printf "Error: please give dims as two values separated by a comma, e.g. --dims=128,256\n"
+    print_usage
+    exit 1
+fi
+
+if [[ -z "$sim_job_id" ]]; then
+    printf "Error: sim-job-id not defined \n"
+    print_usage
+    exit 1
+fi
+
+
+if [[ -z "$input_dir" ]] ;then
+    printf "Error: input_dir is not defined:\"$input_dir\"\n"
+    print_usage
+    exit 1
+fi
+
+if [[ -z "$output_dir" ]] ;then
+    printf "Error: output_dir is not defined:\"$output_dir\"\n"
+    print_usage
+    exit 1
+fi
+
+
+if [[ -z "$SLURM_JOBID" ]] ;then
+    printf "Error: \$SLURM_JOBID not defined, please submit this script with sbatch\n"
+fi
+
+batchfile_dir=$(dirname $(scontrol show job $SLURM_JOBID | awk -F= '/Command=/{print $2}'))
+
+if [[ ! -d "$batchfile_dir" ]] ;then
+    printf "Error: can't make sense of batch file path:\"$batchfile_dir\"\n"
+    exit 1
+fi
+
+#Move files and render them, this will probably be slower than the simulation itself
+if [[ -d "$input_dir" ]]; then
+    mkdir -p $output_dir
+    printf "$SLURM_JOBID $(date) : render start\n" >> render.log
+
+    #Run renderer
+    suffix=1
+    while true; do
+        batch_out_dir=$dst/batch.$suffix
+        if [[ ! -e $batch_out_dir ]]; then
+            break
+        fi
+        suffix=$((suffix + 1))
+    done
+
+    mkdir -p $batch_out_dir
+    find_newest_slice(){
+	# This may be iffy if we have too many files in $src...
+        ls -1t "$src"/*.slice | head -1
+    }
+    newest_slice=$(find_newest_slice)
+
+    printf "$SLURM_JOBID $(date) : Moving files older than $newest_slice to $batch_out_dir\n" >> render.log
+    srun find "$input_dir" -not -newer "$newest_slice" -type f -exec mv -t "$batch_out_dir" \{\} +
+
+    printf "$SLURM_JOBID $(date) : Rendering frames\n" >> render.log
+    srun $batchfile_dir/plot --output=$batch_out_dir/frames --input $batch_out_dir/* --dims $dims_x $dims_y >> render.log
+    printf "$SLURM_JOBID $(date) : Render end. Exit code:$?\n" >> render.log
+else
+    printf "$SLURM_JOBID $(date) : Nothing to render, input dir does not exist (yet?)\n" >> render.log
+fi
+
+# Check if simulation is still running
+if sacct -j $sim_job_id -o "State" --noheader | grep -e RUNNING -e WAITING &> /dev/null; then
+    simulation_running=1
+    resubmit_arg="--resubmit"
+else
+    #Don't resubmit more than once after a simulation has stopped
+    resubmit_arg=""
+fi
+
+#Resubmit if simulation is still running or if the resubmit arg was given
+if [[ $simulation_running -eq 1 ]] || [[ $resubmit -eq 1 ]];then
+    printf "$SLURM_JOBID $(date) : submitting next render job after a delay of $delay seconds\n" >> render.log
+    sbatch --begin=now+$delay $batchfile_dir/render_frames_on_the_fly.batch --input $input_dir --output $output_dir --sim-job $sim_job_id --dims ${dims[0]},${dims[1]} --delay $delay $resubmit_arg
+i

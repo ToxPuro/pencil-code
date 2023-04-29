@@ -1,0 +1,45 @@
+# This is a sample build configuration for C++ – Make.
+# Check our guides at https://confluence.atlassian.com/x/5Q4SMw for more examples.
+# Only use spaces to indent your .yml configuration.
+# -----
+# You can specify a custom docker image from Docker Hub as your build environment.
+image: nvidia/cuda:11.6.0-devel-ubuntu20.04
+
+# JP notes:
+# 1) We need a sufficiently recent GPU to run the code (needs to support CUDA 10 + NVIDIA drivers 418)
+# 2) The default CUDA driver loaded with the docker image is too old
+# => Either Bitbucket offers no NVIDIA GPUs at all, the GPUs are very old, or then we have to update the drivers  by ourselves
+# ==> Updating the kernel drivers by ourselves probably requires creating our own docker image.
+# ===> Which might not even work since I don't know what kind of hardware we're running on (lspci was not available)
+
+options:
+  max-time: 5 # Max time allowed for building (minutes) 
+pipelines:
+  # default: # Default is run at every push but we have only 500 build minutes / month so that probably wouldn't work out
+  custom: # Manual/scheduled building only
+    scheduled:
+    - step:
+        script: # Modify the commands below to build your repository.
+          - export DEBIAN_FRONTEND=noninteractive
+          - ln -fs /usr/share/zoneinfo/Europe/Helsinki /etc/localtime
+          - apt-get update
+          - apt-get install -y apt-transport-https ca-certificates gnupg software-properties-common wget
+          - wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | tee /etc/apt/trusted.gpg.d/kitware.gpg >/dev/null
+          - apt-add-repository 'deb https://apt.kitware.com/ubuntu/ focal main'
+          - apt-get update
+          - apt-get install -y cmake flex bison openmpi-bin libopenmpi-dev gfortran
+          # Test ACC
+          - mkdir -p acc-runtime/build
+          - cd acc-runtime/build
+          - cmake -DUSE_HIP=OFF -DBUILD_ACC_RUNTIME_LIBRARY=ON .. && make -j && cd acc
+          - ../../tests/syntaxtest.sh
+          - cd ../../../
+          - mkdir -p build && cd build
+          - cmake -DUSE_HIP=OFF -DBUILD_UTILS=ON -DBUILD_SAMPLES=ON -DDOUBLE_PRECISION=OFF -DMULTIGPU_ENABLED=ON -DMPI_ENABLED=OFF .. # Single precision
+          - make -j
+          - rm -rf *
+          - cmake -DUSE_HIP=OFF -DCMAKE_BUILD_TYPE=Release -DOPTIMIZE_MEM_ACCESSES=ON -DDSL_MODULE_DIR="../acc-runtime/samples/mhd_modular" -DVERBOSE=ON -DBUILD_UTILS=ON -DBUILD_SAMPLES=ON -DDOUBLE_PRECISION=ON -DMULTIGPU_ENABLED=ON -DMPI_ENABLED=ON .. # Double precision
+          - make -j
+          - rm -rf *
+          - cmake -DUSE_HIP=OFF -DCMAKE_BUILD_TYPE=Debug -DOPTIMIZE_MEM_ACCESSES=ON -DDSL_MODULE_DIR="../acc-runtime/samples/mhd_modular" -DVERBOSE=ON -DBUILD_UTILS=ON -DBUILD_SAMPLES=ON -DDOUBLE_PRECISION=ON -DMULTIGPU_ENABLED=ON -DMPI_ENABLED=ON .. # Debug
+          - make -j

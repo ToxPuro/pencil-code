@@ -13,11 +13,13 @@
 #include <algorithm>
 #include <stdio.h>
 #include <string.h>
-
+#include <time.h>
+#include <unistd.h>
 #define CUDA_ERRCHK(X)
 
 #include "submodule/acc-runtime/api/math_utils.h"
 #include "submodule/include/astaroth.h"
+#include "submodule/build/acc-runtime/api/user_defines.h"
 #define real AcReal
 #define EXTERN 
 #define FINT int
@@ -40,6 +42,10 @@
 #include "PC_module_parfuncs.h"
 
 static AcMesh mesh;
+static AcTaskGraph* graph_1;
+static AcTaskGraph* graph_2;
+static AcTaskGraph* graph_3;
+static int pid;
 Node node;
 DeviceConfiguration devConfig;
 int halo_xy_size=0, halo_xz_size=0, halo_yz_size=0;
@@ -99,7 +105,19 @@ extern "C" void substepGPU(int isubstep, bool full=false, bool early_finalize=fa
     }
     //Transfer the updated ghost zone to the device(s) in the node 
 
-    if (full) acLoad(mesh);
+    if (full){
+        printf("CPU full check before uux :%d: %f\n",pid, mesh.vertex_buffer[VTXBUF_UUX][9+mx*9+my*mx*9]);
+        printf("CPU full check before uuy :%d: %f\n",pid, mesh.vertex_buffer[VTXBUF_UUY][9+mx*9+my*mx*9]);
+        printf("CPU full check before uuz :%d: %f\n",pid, mesh.vertex_buffer[VTXBUF_UUZ][9+mx*9+my*mx*9]);
+        // printf("CPU full check global before 9,73,9:%d: %f\n", pid, mesh.vertex_buffer[VertexBufferHandle(0)][9+mx*73+mx*my*9]);
+        // acLoad(mesh);
+        //What is going to be 9,9,9 in in pid 1?
+        //It is going to be 0,64,0+9,9,9-3,3,3 =6,70,6
+        //This is in one cpu pid 0 going to be:  6,70,6+3,3,3 = 9,73,9
+        printf("Before loading\n");
+        acGridLoadMesh(STREAM_DEFAULT,mesh);
+        printf("After loading :)\n");
+    }
 
     //if (ldiagnos) timeseries_diagnostics(mesh);
 
@@ -110,8 +128,13 @@ extern "C" void substepGPU(int isubstep, bool full=false, bool early_finalize=fa
     // MPI communication has already finished, hence the full domain can be advanced.
       if (!full) {
 #if PACKED_DATA_TRANSFERS
-         loadOuterHalos(mesh);
-   //     acLoad(mesh);
+        //  loadOuterHalos(mesh);
+//        acLoad(mesh);
+    // printf("CPU check: %f\n", mesh.vertex_buffer[VertexBufferHandle(0)][9+134*9+134*134*9]);
+//     acGridSynchronizeStream(STREAM_ALL);
+    printf("CPU not full check before:%d: %f\n", pid,mesh.vertex_buffer[VertexBufferHandle(0)][9+mx*9+mx*my*9]);
+//     printf("CPU not full check global 9,73,9 before:%d: %f\n", pid, mesh.vertex_buffer[VertexBufferHandle(0)][9+mx*73+mx*my*9]);
+    acGridLoadMesh(STREAM_DEFAULT,mesh);
 #else
           acLoad(mesh);
 #endif
@@ -156,13 +179,33 @@ float minux=1e30, minuy=1e30, minuz=1e30, minlnrho=1e30;
       }
       acSynchronize();
 printf("isubstep= %d\n", isubstep);
-      //acSynchronizeMesh();
-      acIntegrateStep(isubstep-1, dt);
-      acSynchronize();
-      acNodeSwapBuffers(node); 
+//       acSynchronizeMesh();
+      acGridSynchronizeStream(STREAM_ALL);
+
+    //  acGridSwapBuffers();
+    // sleep(2);
+     acGridLoadScalarUniform(STREAM_DEFAULT, AC_dt, dt);
+     if(isubstep == 1){
+        acGridExecuteTaskGraph(graph_1,1);
+     }
+     if(isubstep == 2){
+        acGridExecuteTaskGraph(graph_2,1);
+     }
+     if(isubstep == 3){
+        acGridExecuteTaskGraph(graph_3,1);
+     }
+
+//       acIntegrateStep(isubstep-1, dt);
+      acGridSynchronizeStream(STREAM_ALL);
+//      acNodeSwapBuffers(node);
+//      acGridSwapBuffers();
 #if PACKED_DATA_TRANSFERS
-      //acStore(&mesh);
-      storeInnerHalos(mesh);
+      acGridStoreMesh(STREAM_DEFAULT,&mesh);
+    //   storeInnerHalos(mesh);
+//     acStore(&mesh);
+    printf("CPU check after:%d: %f\n", pid, mesh.vertex_buffer[VertexBufferHandle(0)][9+mx*9+mx*my*9]);
+//     printf("CPU check global 9,73,9 after:%d: %f\n", pid, mesh.vertex_buffer[VertexBufferHandle(0)][9+mx*73+mx*my*9]);
+
 #else
       acStore(&mesh);
 #endif
@@ -174,22 +217,31 @@ printf("isubstep= %d\n", isubstep);
       int3 start=(int3){l1i+2,m1i+2,n1i+2}-1, end=(int3){l2i-2,m2i-2,n2i-2}-1+1;   // -1 shift because of C indexing convention
       if (start.x<end.x && start.y<end.y && start.z<end.z) {
         if (l0) {printf("start,end= %d %d %d %d %d %d \n",start.x,start.y,start.z,end.x,end.y,end.z);}
-        acIntegrateStepWithOffset(isubstep-1,dt,start,end);                          // +1 shift because end is exclusive
+        acNodeIntegrateSubstep(node, STREAM_1, isubstep-1,start,end,dt);                          // +1 shift because end is exclusive
       }
 #if PACKED_DATA_TRANSFERS
       int iarg1=1, iarg2=NUM_VTXBUF_HANDLES; 
       finalize_isendrcv_bdry((AcReal*) mesh.vertex_buffer[0], &iarg1, &iarg2);
       boundconds_y_c((AcReal*) mesh.vertex_buffer[0], &iarg1, &iarg2);
       boundconds_z_c((AcReal*) mesh.vertex_buffer[0], &iarg1, &iarg2);
-      loadOuterFront(mesh,STREAM_6);
-//printf("after loadOuterFront \n");
-      loadOuterLeft(mesh,STREAM_4);
-      loadOuterRight(mesh,STREAM_5);
-      loadOuterBot(mesh,STREAM_2);
-      loadOuterTop(mesh,STREAM_3);
-      loadOuterBack(mesh,STREAM_1);
+    //   loadOuterFront(mesh,STREAM_6);
+
+    //   loadOuterLeft(mesh,STREAM_4);
+    //   loadOuterRight(mesh,STREAM_5);
+    //   loadOuterBot(mesh,STREAM_2);
+    //   loadOuterTop(mesh,STREAM_3);
+    //   loadOuterBack(mesh,STREAM_1);
+      loadOuterHalos(mesh);
       acSynchronize();
-      //acSynchronizeMesh();  // only for peer-to-peer
+    //   acIntegrateStep(isubstep-1,dt);
+    // start = {3,3,3};
+    // end = {131,131,64};
+    // acNodeIntegrateSubstep(node, STREAM_1, isubstep-1,start,end,dt);
+
+    // start = {3,3,64};
+    // end = {131,131,131};
+    // acNodeIntegrateSubstep(node, STREAM_1, isubstep-1,start,end,dt);
+    //   acSynchronizeMesh();  // only for peer-to-peer
 
       start=(int3){l1,m1i+2,n1i+2}-1; end=(int3){l1i+1,m2i-2,n2i-2}-1+1;   // integrate inner left plate
       if (start.x<end.x && start.y<end.y && start.z<end.z) {
@@ -225,12 +277,14 @@ printf("isubstep= %d\n", isubstep);
       ERRCHK_CUDA_KERNEL_ALWAYS();
       acNodeSwapBuffers(node);
       acSynchronize();
-      storeInnerLeft(mesh,STREAM_4);
-      storeInnerRight(mesh,STREAM_5);
-      storeInnerBot(mesh,STREAM_2);
-      storeInnerTop(mesh,STREAM_3);
-      storeInnerFront(mesh,STREAM_6);
-      storeInnerBack(mesh,STREAM_1);
+
+      storeInnerHalos(mesh);
+//       storeInnerLeft(mesh,STREAM_4);
+//       storeInnerRight(mesh,STREAM_5);
+//       storeInnerBot(mesh,STREAM_2);
+//       storeInnerTop(mesh,STREAM_3);
+//       storeInnerFront(mesh,STREAM_6);
+//       storeInnerBack(mesh,STREAM_1);
 #endif
       acSynchronize();
 
@@ -257,23 +311,27 @@ extern "C" void initGPU()
 /***********************************************************************************************/
 void setupConfig(AcMeshInfo & config){
 
-printf("nx etc. %d %d %d %.14f %.14f %.14f \n",nx,ny,nz,dx,dy,dz);
-     config.int_params[AC_nx]=nx;
-     config.int_params[AC_ny]=ny;
-     config.int_params[AC_nz]=nz;
+printf("nx etc. %d %d %d %.14f %.14f %.14f \n",nxgrid,nygrid,nzgrid,dx,dy,dz);
+     config.int_params[AC_nx]=nxgrid;
+     config.int_params[AC_ny]=nygrid;
+     config.int_params[AC_nz]=nzgrid;
+
+//           config.int_params[AC_nx]=nx;
+//      config.int_params[AC_ny]=ny;
+//      config.int_params[AC_nz]=nz;
 
      config.int_params[AC_mx] = mx;
      config.int_params[AC_my] = my;
      config.int_params[AC_mz] = mz;
-     config.int_params[AC_nx_min] = l1;
-     config.int_params[AC_nx_max] = l2;
-     config.int_params[AC_ny_min] = m1;
-     config.int_params[AC_ny_max] = m2;
-     config.int_params[AC_nz_min] = n1;
-     config.int_params[AC_nz_max] = n2;
-     config.int_params[AC_mxy]  = mx*my;
-     config.int_params[AC_nxy]  = nx*ny;
-     config.int_params[AC_nxyz] = nw;
+//      config.int_params[AC_nx_min] = l1;
+//      config.int_params[AC_nx_max] = l2;
+//      config.int_params[AC_ny_min] = m1;
+//      config.int_params[AC_ny_max] = m2;
+//      config.int_params[AC_nz_min] = n1;
+//      config.int_params[AC_nz_max] = n2;
+//      config.int_params[AC_mxy]  = mx*my;
+//      config.int_params[AC_nxy]  = nx*ny;
+//      config.int_params[AC_nxyz] = nw;
      config.int_params[AC_xy_plate_bufsize] = halo_xy_size;
      config.int_params[AC_xz_plate_bufsize] = halo_xz_size;
      config.int_params[AC_yz_plate_bufsize] = halo_yz_size;
@@ -281,7 +339,8 @@ printf("nx etc. %d %d %d %.14f %.14f %.14f \n",nx,ny,nz,dx,dy,dz);
      config.real_params[AC_dsx]=dx;
      config.real_params[AC_dsy]=dy;
      config.real_params[AC_dsz]=dz;
-printf("l1i etc. %d %d %d %d %d %d \n", l1i,l2i,n1i,n2i,m1i,m2i);
+printf("%d: l1i etc. %d %d %d %d %d %d \n", pid, l1i,l2i,n1i,n2i,m1i,m2i);
+printf("%d: l1 etc. %d %d %d %d %d %d \n", pid, l1,l2,n1,n2,m1,m2);
      //config.real_params[AC_inv_dsx] = 1./dx;
      //config.real_params[AC_inv_dsy] = 1./dy;
      //config.real_params[AC_inv_dsz] = 1./dz;
@@ -354,6 +413,7 @@ extern "C" void initializeGPU(AcReal **farr_GPU_in, AcReal **farr_GPU_out)
 #if PACKED_DATA_TRANSFERS
         initLoadStore();
 #endif
+        MPI_Comm_rank(MPI_COMM_WORLD, &pid);
         setupConfig(mesh.info);
         checkConfig(mesh.info);
 //printf("mesh.info.real_params[AC_k1_ff]= %f \n",mesh.info.real_params[AC_k1_ff]);
@@ -361,16 +421,49 @@ extern "C" void initializeGPU(AcReal **farr_GPU_in, AcReal **farr_GPU_out)
         node=acGetNode();
         acNodeQueryDeviceConfiguration(node, &devConfig);
         loadProfiles(mesh.info);
+        acHostUpdateBuiltinParams(&mesh.info);
+
+
+
+    acGridSetDomainDecomposition({nprocx,nprocy,nprocz});
+    acGridInit(mesh.info);
 
         AcReal *p[2];
         if (acNodeGetVBApointers(&node, p)==AC_SUCCESS) {
           *farr_GPU_in=p[0];
           *farr_GPU_out=p[1];
-printf("From node layer: vbapointer= %p %p \n", *farr_GPU_in, *farr_GPU_out);
+printf("From grid layer: vbapointer= %p %p \n", *farr_GPU_in, *farr_GPU_out);
         } else {
           *farr_GPU_in=NULL;
           *farr_GPU_out=NULL;
         }
+    VertexBufferHandle all_fields[NUM_VTXBUF_HANDLES];
+    for(int i=0;i<NUM_VTXBUF_HANDLES;i++){
+        all_fields[i] = (VertexBufferHandle)i;
+    }
+    AcTaskDefinition build_graph_1[] = {
+        acCompute(KERNEL_twopass_solve_intermediate, all_fields, 0, 0),
+        acCompute(KERNEL_twopass_solve_final, all_fields, 0, 0),
+        // acCompute(KERNEL_singlepass_solve, all_fields, 0, 0),
+        // acCompute(KERNEL_check, all_fields),
+    };
+    graph_1 = acGridBuildTaskGraph(build_graph_1);
+
+    AcTaskDefinition build_graph_2[] = {
+        acCompute(KERNEL_twopass_solve_intermediate, all_fields, 0, 1),
+        acCompute(KERNEL_twopass_solve_final, all_fields, 0, 1),
+        // acCompute(KERNEL_singlepass_solve, all_fields, 0, 1),
+//         acCompute(KERNEL_check, all_fields),
+    };
+    graph_2 = acGridBuildTaskGraph(build_graph_2);
+
+    AcTaskDefinition build_graph_3[] = {
+        acCompute(KERNEL_twopass_solve_intermediate, all_fields, 0, 2),
+        acCompute(KERNEL_twopass_solve_final, all_fields, 0, 2),
+        // acCompute(KERNEL_singlepass_solve, all_fields, 0, 2),
+//         acCompute(KERNEL_check, all_fields),
+    };
+    graph_3 = acGridBuildTaskGraph(build_graph_3);
 
     // initialize diagnostics
        //init_diagnostics();
@@ -378,7 +471,7 @@ printf("From node layer: vbapointer= %p %p \n", *farr_GPU_in, *farr_GPU_out);
 /***********************************************************************************************/
 extern "C" void copyFarray() 
 {
-       AcResult res=acStore(&mesh);
+       AcResult res=acGridStoreMesh(STREAM_DEFAULT,&mesh);
 printf("store all %d \n",res); fflush(stdout);
 }
 /***********************************************************************************************/

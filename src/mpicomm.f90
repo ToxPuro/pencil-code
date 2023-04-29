@@ -378,6 +378,7 @@ if (iproc==0) print*, 'Pencil1: iapp, nprocs, ncpus=', iapp, nprocs, ncpus   !MP
         ipx = modulo(iproc, nprocx)
         ipy = modulo(iproc/nprocx, nprocy)
         ipz = iproc/nprocxy
+        print*,"proc coords: ",iproc,ipx,ipy,ipz
       else
         ipx = modulo(iproc, nprocx)
         ipy = iproc/nprocxz

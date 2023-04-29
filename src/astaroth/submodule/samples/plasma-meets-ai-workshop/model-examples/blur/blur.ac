@@ -1,0 +1,20 @@
+Field field0
+
+hostdefine STENCIL_ORDER (2) // may not be needed as long as this <= default
+
+#define COEFF (1. / 9.)
+Stencil filter {
+    [0][-1][-1] = COEFF,
+    [0][-1][0] = COEFF,
+    [0][-1][1] = COEFF,
+    [0][0][-1] = COEFF,
+    [0][0][0] = COEFF,
+    [0][0][1] = COEFF,
+    [0][1][-1] = COEFF,
+    [0][1][0] = COEFF,
+    [0][1][1] = COEFF
+}
+
+Kernel blur() {
+    write(field0, filter(field0))
+}

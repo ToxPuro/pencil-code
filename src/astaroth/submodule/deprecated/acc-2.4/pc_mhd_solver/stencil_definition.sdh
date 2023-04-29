@@ -1,0 +1,116 @@
+//#include "/homeappl/home/mreinhar/git/pencil-code/samples/gputest/src/astaroth/PC_moduleflags.h"
+#define LUPWD (1)
+
+// Int params
+uniform int AC_max_steps;
+uniform int AC_save_steps;
+uniform int AC_bin_steps;
+uniform int AC_bc_type;
+
+// Real params
+uniform Scalar AC_dt;
+// Spacing
+uniform Scalar AC_dsx;
+uniform Scalar AC_dsy;
+uniform Scalar AC_dsz;
+uniform Scalar AC_dsmin;
+// physical grid
+uniform Scalar AC_xlen;
+uniform Scalar AC_ylen;
+uniform Scalar AC_zlen;
+uniform Scalar AC_xorig;
+uniform Scalar AC_yorig;
+uniform Scalar AC_zorig;
+// Physical units
+uniform Scalar AC_unit_density;
+uniform Scalar AC_unit_velocity;
+uniform Scalar AC_unit_length;
+// properties of gravitating star
+uniform Scalar AC_star_pos_x;
+uniform Scalar AC_star_pos_y;
+uniform Scalar AC_star_pos_z;
+uniform Scalar AC_M_star;
+//  Run params
+uniform Scalar AC_cdt;
+uniform Scalar AC_cdtv;
+uniform Scalar AC_cdts;
+uniform Scalar AC_nu_visc;
+uniform Scalar AC_cs_sound;
+uniform Scalar AC_eta;
+uniform Scalar AC_mu0;
+uniform Scalar AC_cp_sound;
+uniform Scalar AC_gamma;
+uniform Scalar AC_cv_sound;
+uniform Scalar AC_lnT0;
+uniform Scalar AC_lnrho0;
+uniform Scalar AC_zeta;
+uniform Scalar AC_trans;
+uniform Scalar AC_THERMAL_CONDUCTIVITY;
+//  Other
+uniform Scalar AC_bin_save_t;
+//  Initial condition params
+uniform Scalar AC_ampl_lnrho;
+uniform Scalar AC_ampl_uu;
+uniform Scalar AC_angl_uu;
+uniform Scalar AC_lnrho_edge;
+uniform Scalar AC_lnrho_out;
+//  Additional helper params  //  (deduced from other params do not set these directly!)
+uniform Scalar AC_G_CONST;
+uniform Scalar AC_GM_star;
+uniform Scalar AC_sq2GM_star;
+uniform Scalar AC_cs2_sound;
+uniform Scalar AC_inv_dsx;
+uniform Scalar AC_inv_dsy;
+uniform Scalar AC_inv_dsz;
+
+// PC-style helical forcing with profiles
+uniform Vector AC_kk;
+uniform Vector AC_coef1;
+uniform Vector AC_coef2;
+uniform Vector AC_coef3;
+uniform Vector AC_fda;
+
+uniform Scalar AC_phase;
+uniform Scalar AC_fact;
+uniform Scalar AC_k1_ff;
+
+uniform ScalarArray AC_profx_ampl;
+uniform ScalarArray AC_profy_ampl;
+uniform ScalarArray AC_profz_ampl;
+uniform ScalarArray AC_profx_hel;
+uniform ScalarArray AC_profy_hel;
+uniform ScalarArray AC_profz_hel;
+
+uniform int AC_iforcing_zsym;
+
+/*
+ * =============================================================================
+ * User-defined vertex buffers
+ * =============================================================================
+ */
+#if LENTROPY
+uniform ScalarField VTXBUF_LNRHO;
+uniform ScalarField VTXBUF_UUX;
+uniform ScalarField VTXBUF_UUY;
+uniform ScalarField VTXBUF_UUZ;
+uniform ScalarField VTXBUF_AX;
+uniform ScalarField VTXBUF_AY;
+uniform ScalarField VTXBUF_AZ;
+uniform ScalarField VTXBUF_ENTROPY;
+#elif LMAGNETIC
+uniform ScalarField VTXBUF_LNRHO;
+uniform ScalarField VTXBUF_UUX;
+uniform ScalarField VTXBUF_UUY;
+uniform ScalarField VTXBUF_UUZ;
+uniform ScalarField VTXBUF_AX;
+uniform ScalarField VTXBUF_AY;
+uniform ScalarField VTXBUF_AZ;
+#elif LHYDRO
+uniform ScalarField VTXBUF_LNRHO;
+uniform ScalarField VTXBUF_UUX;
+uniform ScalarField VTXBUF_UUY;
+uniform ScalarField VTXBUF_UUZ;
+#else
+uniform ScalarField VTXBUF_LNRHO;
+#endif
+#

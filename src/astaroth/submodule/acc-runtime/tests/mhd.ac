@@ -1,0 +1,281 @@
+int step_number
+real AC_dt
+#define INV_DS  (1. / 0.04908738521)
+
+real AC_cs_sound, AC_cp_sound
+real AC_gamma, AC_nu_visc, AC_zeta, AC_eta
+real AC_lnrho0, AC_mu0, AC_lnT0
+
+Field VTXBUF_LNRHO, VTXBUF_UUX, VTXBUF_UUY, VTXBUF_UUZ, VTXBUF_AX, VTXBUF_AY, VTXBUF_AZ,VTXBUF_ENTROPY
+
+#define UU Field3(VTXBUF_UUX, VTXBUF_UUY, VTXBUF_UUZ)
+#define AA Field3(VTXBUF_AX, VTXBUF_AY, VTXBUF_AZ)
+
+#define DER1_3 (INV_DS * 1. / 60.)
+#define DER1_2 (INV_DS * -3. / 20.)
+#define DER1_1 (INV_DS * 3. / 4.)
+#define DER1_0 (0)
+
+#define DER2_3 (INV_DS * INV_DS * 1. / 90.)
+#define DER2_2 (INV_DS * INV_DS * -3. / 20.)
+#define DER2_1 (INV_DS * INV_DS * 3. / 2.)
+#define DER2_0 (INV_DS * INV_DS * -49. / 18.)
+
+#define DERX_3 (INV_DS * INV_DS * 2. / 720.)
+#define DERX_2 (INV_DS * INV_DS * -27. / 720.)
+#define DERX_1 (INV_DS * INV_DS * 270. / 720.)
+#define DERX_0 (0)
+
+Stencil value {
+    [0][0][0] = 1
+}
+
+Stencil derx {
+    [-3][0][0] = -DER1_3,
+    [-2][0][0] = -DER1_2,
+    [-1][0][0] = -DER1_1,
+    [1][0][0]  = DER1_1,
+    [2][0][0]  = DER1_2,
+    [3][0][0]  = DER1_3
+}
+
+Stencil dery {
+    [0][-3][0] = -DER1_3,
+    [0][-2][0] = -DER1_2,
+    [0][-1][0] = -DER1_1,
+    [0][1][0]  = DER1_1,
+    [0][2][0]  = DER1_2,
+    [0][3][0]  = DER1_3
+}
+
+Stencil derz {
+    [0][0][-3] = -DER1_3,
+    [0][0][-2] = -DER1_2,
+    [0][0][-1] = -DER1_1,
+    [0][0][1]  = DER1_1,
+    [0][0][2]  = DER1_2,
+    [0][0][3]  = DER1_3
+}
+
+Stencil derxx {
+    [-3][0][0] = DER2_3,
+    [-2][0][0] = DER2_2,
+    [-1][0][0] = DER2_1,
+    [0][0][0]  = DER2_0,
+    [1][0][0]  = DER2_1,
+    [2][0][0]  = DER2_2,
+    [3][0][0]  = DER2_3
+}
+
+Stencil deryy {
+    [0][-3][0] = DER2_3,
+    [0][-2][0] = DER2_2,
+    [0][-1][0] = DER2_1,
+    [0][0][0]  = DER2_0,
+    [0][1][0]  = DER2_1,
+    [0][2][0]  = DER2_2,
+    [0][3][0]  = DER2_3
+}
+
+Stencil derzz {
+    [0][0][-3] = DER2_3,
+    [0][0][-2] = DER2_2,
+    [0][0][-1] = DER2_1,
+    [0][0][0]  = DER2_0,
+    [0][0][1]  = DER2_1,
+    [0][0][2]  = DER2_2,
+    [0][0][3]  = DER2_3
+}
+
+Stencil derxy {
+    [-3][-3][0] = DERX_3,
+    [-2][-2][0] = DERX_2,
+    [-1][-1][0] = DERX_1,
+    [0][0][0]  = DERX_0,
+    [1][1][0]  = DERX_1,
+    [2][2][0]  = DERX_2,
+    [3][3][0]  = DERX_3,
+    [-3][3][0] = -DERX_3,
+    [-2][2][0] = -DERX_2,
+    [-1][1][0] = -DERX_1,
+    [1][-1][0] = -DERX_1,
+    [2][-2][0] = -DERX_2,
+    [3][-3][0] = -DERX_3
+}
+
+Stencil derxz {
+    [-3][0][-3] = DERX_3,
+    [-2][0][-2] = DERX_2,
+    [-1][0][-1] = DERX_1,
+    [0][0][0]  = DERX_0,
+    [1][0][1]  = DERX_1,
+    [2][0][2]  = DERX_2,
+    [3][0][3]  = DERX_3,
+    [-3][0][3] = -DERX_3,
+    [-2][0][2] = -DERX_2,
+    [-1][0][1] = -DERX_1,
+    [1][0][-1] = -DERX_1,
+    [2][0][-2] = -DERX_2,
+    [3][0][-3] = -DERX_3
+}
+
+Stencil deryz {
+    [0][-3][-3] = DERX_3,
+    [0][-2][-2] = DERX_2,
+    [0][-1][-1] = DERX_1,
+    [0][0][0]  = DERX_0,
+    [0][1][1]  = DERX_1,
+    [0][2][2]  = DERX_2,
+    [0][3][3]  = DERX_3,
+    [0][-3][3] = -DERX_3,
+    [0][-2][2] = -DERX_2,
+    [0][-1][1] = -DERX_1,
+    [0][1][-1] = -DERX_1,
+    [0][2][-2] = -DERX_2,
+    [0][3][-3] = -DERX_3
+}
+
+vecvalue(v) {
+    return real3(value(v.x), value(v.y), value(v.z))
+}
+
+gradient(s) {
+    return real3(derx(s), dery(s), derz(s))
+}
+
+gradients(v) {
+    return Matrix(gradient(v.x), gradient(v.y), gradient(v.z))
+}
+
+divergence(v) {
+    return derx(v.x) + dery(v.y) + derz(v.z)
+}
+
+curl(v) {
+    return real3(dery(v.z) - derz(v.y), derz(v.x) - derx(v.z), derx(v.y) - dery(v.x))
+}
+
+laplace(s) {
+    return derxx(s) + deryy(s) + derzz(s)
+}
+
+veclaplace(v) {
+    return real3(laplace(v.x), laplace(v.y), laplace(v.z))
+}
+
+induction() {
+    return cross(vecvalue(UU), curl(AA)) + AC_eta * veclaplace(AA)
+}
+
+stress_tensor(v) {
+    Matrix S
+
+    S.data[0][0] = (2.0 / 3.0) * derx(v.x) - (1.0 / 3.0) * (dery(v.y) + derz(v.z))
+    S.data[0][1] = (1.0 / 2.0) * (dery(v.x) + derx(v.y))
+    S.data[0][2] = (1.0 / 2.0) * (derz(v.x) + derx(v.z))
+
+    S.data[1][0] = S.data[0][1]
+    S.data[1][1] = (2.0 / 3.0) * dery(v.y) - (1.0 / 3.0) * (derx(v.x) + derz(v.z))
+    S.data[1][2] = (1.0 / 2.0) * (derz(v.y) + dery(v.z))
+
+    S.data[2][0] = S.data[0][2]
+    S.data[2][1] = S.data[1][2]
+    S.data[2][2] = (2.0 / 3.0) * derz(v.z) - (1.0 / 3.0) * (derx(v.x) + dery(v.y))
+
+    return S
+}
+
+gradient_of_divergence(v) {
+    return real3(
+        derxx(v.x) + derxy(v.y) + derxz(v.z),
+        derxy(v.x) + deryy(v.y) + deryz(v.z),
+        derxz(v.x) + deryz(v.y) + derzz(v.z)
+    )
+}
+
+contract(mat) {
+    return dot(mat.row(0), mat.row(0)) +
+           dot(mat.row(1), mat.row(1)) +
+           dot(mat.row(2), mat.row(2))
+}
+
+continuity() {
+    return -dot(vecvalue(UU), gradient(VTXBUF_LNRHO)) - divergence(UU)
+}
+
+momentum() {
+    S = stress_tensor(UU)
+    cs2_sound = AC_cs_sound * AC_cs_sound
+    cs2 = cs2_sound * exp(AC_gamma * value(VTXBUF_ENTROPY) / AC_cp_sound + (AC_gamma - 1.) * (value(VTXBUF_LNRHO) - AC_lnrho0))
+
+    j = (1. / AC_mu0) * (gradient_of_divergence(AA) - veclaplace(AA))
+    B = curl(AA)
+    inv_rho = 1. / exp(value(VTXBUF_LNRHO))
+
+    mom = - gradients(UU) * vecvalue(UU)
+          - cs2 * ((1. / AC_cp_sound) * gradient(VTXBUF_ENTROPY) + gradient(VTXBUF_LNRHO))
+          + inv_rho * cross(j, B)
+          + AC_nu_visc * (veclaplace(UU) + (1. / 3.) * gradient_of_divergence(UU)
+                       + 2. * S * gradient(VTXBUF_LNRHO))
+          + AC_zeta * gradient_of_divergence(UU)
+
+    return mom
+}
+
+lnT() {
+    return AC_lnT0
+         + AC_gamma * value(VTXBUF_ENTROPY) / AC_cp_sound
+         + (AC_gamma - 1.) * (value(VTXBUF_LNRHO) - AC_lnrho0)
+}
+
+heat_conduction() {
+    inv_AC_cp_sound = 1. / AC_cp_sound
+    grad_ln_chi = -gradient(VTXBUF_LNRHO)
+
+    first_term = AC_gamma * inv_AC_cp_sound * laplace(VTXBUF_ENTROPY) + (AC_gamma - 1.) * laplace(VTXBUF_LNRHO)
+    second_term = AC_gamma * inv_AC_cp_sound * gradient(VTXBUF_ENTROPY) + (AC_gamma - 1.) * gradient(VTXBUF_LNRHO)
+    third_term = AC_gamma * (inv_AC_cp_sound * gradient(VTXBUF_ENTROPY) + gradient(VTXBUF_LNRHO)) + grad_ln_chi
+
+    // TODO IMPORTANT what is 0.001 here?
+    chi = (0.001 / (exp(value(VTXBUF_LNRHO))) * AC_cp_sound)
+
+    return AC_cp_sound * chi * (first_term + dot(second_term, third_term))
+}
+
+entropy() {
+    S = stress_tensor(UU)
+    inv_pT = 1. / (exp(value(VTXBUF_LNRHO)) * exp(lnT()))
+    j = (1. / AC_mu0) * (gradient_of_divergence(AA) - veclaplace(AA))
+    RHS = (0) - (0) + AC_eta * AC_mu0 * dot(j, j) +
+                       2. * exp(value(VTXBUF_LNRHO)) * AC_nu_visc * contract(S) +
+                       AC_zeta * exp(value(VTXBUF_LNRHO)) * divergence(UU) * divergence(UU)
+
+    return -dot(vecvalue(UU), gradient(VTXBUF_ENTROPY)) + inv_pT * RHS + heat_conduction()
+}
+
+rk3(s0, s1, roc) {
+    real alpha = 0., -5./9., -153. / 128.
+    real beta = 1. / 3., 15./ 16., 8. / 15.
+
+    if step_number > 0 {
+        return s1 + beta[step_number] * ((alpha[step_number] / beta[step_number - 1]) * (s1 - s0) + roc * AC_dt)
+    } else {
+        return s1 + beta[step_number] * roc * AC_dt
+    }
+}
+
+Kernel solve() {
+    write(VTXBUF_LNRHO, rk3(previous(VTXBUF_LNRHO), value(VTXBUF_LNRHO), continuity()))
+    write(VTXBUF_ENTROPY, rk3(previous(VTXBUF_ENTROPY), value(VTXBUF_ENTROPY), entropy()))
+
+    mom = momentum()
+    ind = induction()
+
+    write(VTXBUF_UUX, rk3(previous(VTXBUF_UUX), value(VTXBUF_UUX), mom.x))
+    write(VTXBUF_UUY, rk3(previous(VTXBUF_UUY), value(VTXBUF_UUY), mom.y))
+    write(VTXBUF_UUZ, rk3(previous(VTXBUF_UUZ), value(VTXBUF_UUZ), mom.z))
+
+    write(VTXBUF_AX, rk3(previous(VTXBUF_AX), value(VTXBUF_AX), ind.x))
+    write(VTXBUF_AY, rk3(previous(VTXBUF_AY), value(VTXBUF_AY), ind.y))
+    write(VTXBUF_AZ, rk3(previous(VTXBUF_AZ), value(VTXBUF_AZ), ind.z))
+}

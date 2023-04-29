@@ -1,0 +1,123 @@
+#include "stencil.ach"
+
+Field UUX, UUY, UUZ
+Field LNRHO
+
+Field T00, T01, T02, T11, T12, T22 // Note: the stress tensor is symmetric
+
+#define UU Field3(UUX, UUY, UUZ)
+
+/*
+#define TEMPERATURE_T (288) // 15 deg C
+#define UNIVERSAL_GAS_CONSTANT_R (8.31446261815324)
+#define DYNAMIC_VISCOSITY_MU (1.81e-5) // PA*s, Air at 15 deg C
+#define SMAGORINSKY_COEFFICIENT_C (0.16)
+#define CHARACTERISTIC_SCALE (DSX)
+#define CS0 (1.0)
+#define RHO0 (1.0)
+#define CP (1.0)
+#define CV (2.0)
+#define GAMMA (CP/CV)
+#define ZETA (1e-2)
+#define NU_VISC (5e-3)
+*/
+#define TEMPERATURE_T (288) // 15 deg C
+#define DYNAMIC_VISCOSITY_MU (5e-3) // PA*s, Air at 15 deg C
+#define SMAGORINSKY_COEFFICIENT_C (0.16)
+#define CHARACTERISTIC_SCALE (DSX)
+#define CP (1.0)
+#define CV (2.0)
+#define GAMMA (CP/CV)
+
+stress_tensor(v)
+{
+    Matrix S
+
+    S.data[0][0] = (2.0 / 3.0) * ddx(v.x) - (1.0 / 3.0) * (ddy(v.y) + ddz(v.z))
+    S.data[0][1] = (1.0 / 2.0) * (ddy(v.x) + ddx(v.y))
+    S.data[0][2] = (1.0 / 2.0) * (ddz(v.x) + ddx(v.z))
+
+    S.data[1][0] = S.data[0][1]
+    S.data[1][1] = (2.0 / 3.0) * ddy(v.y) - (1.0 / 3.0) * (ddx(v.x) + ddz(v.z))
+    S.data[1][2] = (1.0 / 2.0) * (ddz(v.y) + ddy(v.z))
+
+    S.data[2][0] = S.data[0][2]
+    S.data[2][1] = S.data[1][2]
+    S.data[2][2] = (2.0 / 3.0) * ddz(v.z) - (1.0 / 3.0) * (ddx(v.x) + ddy(v.y))
+
+    return S
+}
+
+galilean_invariant_estimation(mat)
+{
+   prod = dot(mat.row(0), mat.row(0)) +
+          dot(mat.row(1), mat.row(1)) +
+          dot(mat.row(2), mat.row(2))
+
+   return sqrt(2 * prod)
+}
+
+smagorinsky_eddy_viscosity(stress)
+{
+   return pow(SMAGORINSKY_COEFFICIENT_C * CHARACTERISTIC_SCALE, 2) * galilean_invariant_estimation(stress)
+}
+
+stress_tau()
+{
+   stress = stress_tensor(UU)
+   return -2 * smagorinsky_eddy_viscosity(stress) * stress
+}
+
+Kernel compute_stress_tensor_tau()
+{
+   stress = stress_tau()
+   write(T00, stress.data[0][0])
+   write(T01, stress.data[0][1])
+   write(T02, stress.data[0][2])
+   write(T11, stress.data[1][1])
+   write(T12, stress.data[1][2])
+   write(T22, stress.data[2][2])
+}
+
+pressure(rho)
+{
+   return rho * (GAMMA - 1.0) * CV * TEMPERATURE_T
+}
+
+continuity()
+{
+   return - dot(vecvalue(UU), gradient(LNRHO))
+}
+
+kinematic_viscosity()
+{
+   return DYNAMIC_VISCOSITY_MU / value(LNRHO)
+}
+
+// Rename: Tensor divergence
+construct_stress_term()
+{
+   x = ddx(T00) + ddy(T01) + ddz(T02)
+   y = ddx(T01) + ddy(T11) + ddz(T12)
+   z = ddx(T02) + ddy(T12) + ddz(T22)
+
+   return real3(x, y, z)
+}
+
+momentum()
+{
+   return - gradients(UU) * vecvalue(UU)
+          - (1.0 / value(LNRHO)) * pressure(gradient(LNRHO))
+          + kinematic_viscosity() * veclaplace(UU)
+          - construct_stress_term()
+}
+
+Kernel singlepass_solve()
+{
+   mom = momentum()
+   write(UUX, rk3(previous(UUX), value(UUX), mom.x))
+   write(UUY, rk3(previous(UUY), value(UUY), mom.y))
+   write(UUZ, rk3(previous(UUZ), value(UUZ), mom.z))
+
+   write(LNRHO, rk3(previous(LNRHO), value(LNRHO), continuity()))
+}

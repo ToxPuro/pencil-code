@@ -1,0 +1,555 @@
+int AC_step_number
+real AC_dt
+real AC_cs2
+
+// Note: not used by mhdsolver.ac at the moment (src/utils/modelsolver.c does)
+hostdefine AC_INTEGRATION_ENABLED // Enables acIntegrate() and other non-generic library functions
+/*
+hostdefine LDENSITY (1)
+hostdefine LHYDRO (1)
+hostdefine LMAGNETIC (1)
+hostdefine LENTROPY (1)
+hostdefine LTEMPERATURE (0)
+hostdefine LFORCING (0)
+*/
+hostdefine LUPWD (0)
+hostdefine LSINK (0)
+hostdefine LBFIELD (0)
+hostdefine LSHOCK (0)
+hostdefine AC_THERMAL_CONDUCTIVITY (0.001) // TODO: make an actual config parameter
+hostdefine R_PI (AC_REAL_PI)
+
+//Field VTXBUF_LNRHO, VTXBUF_UUX, VTXBUF_UUY, VTXBUF_UUZ, VTXBUF_AX, VTXBUF_AY, VTXBUF_AZ,VTXBUF_ENTROPY
+Field VTXBUF_UUX, VTXBUF_UUY, VTXBUF_UUZ, VTXBUF_LNRHO, VTXBUF_ENTROPY, VTXBUF_AX, VTXBUF_AY, VTXBUF_AZ
+
+// Additional params needed by standalone & standalone_mpi
+// Int params
+int AC_max_steps
+int AC_save_steps
+int AC_bin_steps
+int AC_start_step
+
+real AC_dsx, AC_dsy, AC_dsz // WARNING UNUSED! NEED TO BE COMPILE-TIME CONSTANTS
+
+//#define DSX (0.04908738521)
+//#define DSY (0.04908738521)
+//#define DSZ (0.04908738521)
+//#define DSX (0.78539819)
+//#define DSY (0.78539819)
+//#define DSZ (0.78539819)
+//#define DSX (0.39269909)
+//#define DSY (0.39269909)
+//#define DSZ (0.39269909)
+#define DSX (0.098174773)
+#define DSY (0.098174773)
+#define DSZ (0.098174773)
+#define AC_inv_dsx (1. / DSX)
+#define AC_inv_dsy (1. / DSY)
+#define AC_inv_dsz (1. / DSZ)
+
+// Real params
+real AC_max_time
+// Spacing
+real AC_dsmin
+// physical grid
+real AC_xlen
+real AC_ylen
+real AC_zlen
+real AC_xorig
+real AC_yorig
+real AC_zorig
+// Physical units
+real AC_unit_density
+real AC_unit_velocity
+real AC_unit_length
+real AC_unit_magnetic
+// properties of gravitating star
+real AC_star_pos_x
+real AC_star_pos_y
+real AC_star_pos_z
+real AC_M_star
+// properties of sink particle
+real AC_sink_pos_x
+real AC_sink_pos_y
+real AC_sink_pos_z
+real AC_M_sink
+real AC_M_sink_init
+real AC_M_sink_Msun
+real AC_soft
+real AC_accretion_range
+real AC_switch_accretion
+//  Run params
+real AC_cdt
+real AC_cdtv
+real AC_cdts
+real AC_nu
+real AC_cs20
+real AC_lnTT0
+real AC_eta
+real AC_mu0
+real AC_cp
+real AC_gamma
+real AC_cv
+real AC_lnrho0
+real AC_zeta
+real AC_trans
+real AC_nu_shock
+real AC_nkramers
+int AC_lpressuregradient_gas
+real AC_hcond0_kramers
+
+//  Parameters for generic boundary conditions, this is a dummy variable for testing, please use different ones for each field
+real AC_boundary_derivative
+
+//  Parameters only used in boundary conditions at the moment
+//  If you feel they should be elsewhere, please move them
+real AC_n_kramers
+real AC_sigma_SBt
+real AC_chi
+real AC_chi_t
+real AC_chi_t_prof1
+
+//  Other
+real AC_bin_save_t
+//  Initial condition params
+real AC_ampl_lnrho
+real AC_ampl_uu
+real AC_angl_uu
+real AC_lnrho_edge
+real AC_lnrho_out
+real AC_ampl_aa
+real AC_init_k_wave
+real AC_init_sigma_hel
+//  Forcing parameters. User configured.
+real AC_forcing_magnitude
+real AC_relhel
+real AC_kmin
+real AC_kmax
+//  Forcing parameters. Set by the generator.
+real AC_forcing_phase
+real AC_k_forcex
+real AC_k_forcey
+real AC_k_forcez
+real AC_kaver
+real AC_ff_hel_rex
+real AC_ff_hel_rey
+real AC_ff_hel_rez
+real AC_ff_hel_imx
+real AC_ff_hel_imy
+real AC_ff_hel_imz
+//  Additional helper params  //  (deduced from other params do not set these directly!)
+real AC_G_const
+real AC_GM_star
+real AC_unit_mass
+real AC_sq2GM_star
+//
+real AC_current_time
+
+#define UU Field3(VTXBUF_UUX, VTXBUF_UUY, VTXBUF_UUZ)
+#define AA Field3(VTXBUF_AX, VTXBUF_AY, VTXBUF_AZ)
+
+#define DER1_3 (1. / 60.)
+#define DER1_2 (-3. / 20.)
+#define DER1_1 (3. / 4.)
+#define DER1_0 (0)
+
+#define DER2_3 (1. / 90.)
+#define DER2_2 (-3. / 20.)
+#define DER2_1 (3. / 2.)
+#define DER2_0 (-49. / 18.)
+
+#define DERX_3 (2. / 720.)
+#define DERX_2 (-27. / 720.)
+#define DERX_1 (270. / 720.)
+#define DERX_0 (0)
+
+Stencil value {
+    [0][0][0] = 1
+}
+
+
+Stencil derx {
+    [0][0][-3] = -AC_inv_dsx * DER1_3,
+    [0][0][-2] = -AC_inv_dsx * DER1_2,
+    [0][0][-1] = -AC_inv_dsx * DER1_1,
+    [0][0][1]  = AC_inv_dsx * DER1_1,
+    [0][0][2]  = AC_inv_dsx * DER1_2,
+    [0][0][3]  = AC_inv_dsx * DER1_3
+}
+
+Stencil dery {
+    [0][-3][0] = -AC_inv_dsy * DER1_3,
+    [0][-2][0] = -AC_inv_dsy * DER1_2,
+    [0][-1][0] = -AC_inv_dsy * DER1_1,
+    [0][1][0]  = AC_inv_dsy * DER1_1,
+    [0][2][0]  = AC_inv_dsy * DER1_2,
+    [0][3][0]  = AC_inv_dsy * DER1_3
+}
+
+Stencil derz {
+    [-3][0][0] = -AC_inv_dsz * DER1_3,
+    [-2][0][0] = -AC_inv_dsz * DER1_2,
+    [-1][0][0] = -AC_inv_dsz * DER1_1,
+    [1][0][0]  = AC_inv_dsz * DER1_1,
+    [2][0][0]  = AC_inv_dsz * DER1_2,
+    [3][0][0]  = AC_inv_dsz * DER1_3
+}
+
+Stencil derxx {
+    [0][0][-3] = AC_inv_dsx * AC_inv_dsx * DER2_3,
+    [0][0][-2] = AC_inv_dsx * AC_inv_dsx * DER2_2,
+    [0][0][-1] = AC_inv_dsx * AC_inv_dsx * DER2_1,
+    [0][0][0]  = AC_inv_dsx * AC_inv_dsx * DER2_0,
+    [0][0][1]  = AC_inv_dsx * AC_inv_dsx * DER2_1,
+    [0][0][2]  = AC_inv_dsx * AC_inv_dsx * DER2_2,
+    [0][0][3]  = AC_inv_dsx * AC_inv_dsx * DER2_3
+}
+
+Stencil deryy {
+    [0][-3][0] = AC_inv_dsy * AC_inv_dsy * DER2_3,
+    [0][-2][0] = AC_inv_dsy * AC_inv_dsy * DER2_2,
+    [0][-1][0] = AC_inv_dsy * AC_inv_dsy * DER2_1,
+    [0][0][0]  = AC_inv_dsy * AC_inv_dsy * DER2_0,
+    [0][1][0]  = AC_inv_dsy * AC_inv_dsy * DER2_1,
+    [0][2][0]  = AC_inv_dsy * AC_inv_dsy * DER2_2,
+    [0][3][0]  = AC_inv_dsy * AC_inv_dsy * DER2_3
+}
+
+Stencil derzz {
+    [-3][0][0] = AC_inv_dsz * AC_inv_dsz * DER2_3,
+    [-2][0][0] = AC_inv_dsz * AC_inv_dsz * DER2_2,
+    [-1][0][0] = AC_inv_dsz * AC_inv_dsz * DER2_1,
+    [0][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_0,
+    [1][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_1,
+    [2][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_2,
+    [3][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_3
+}
+
+Stencil derxy {
+    [0][-3][-3] = AC_inv_dsx * AC_inv_dsy * DERX_3,
+    [0][-2][-2] = AC_inv_dsx * AC_inv_dsy * DERX_2,
+    [0][-1][-1] = AC_inv_dsx * AC_inv_dsy * DERX_1,
+    [0][0][0]  = AC_inv_dsx * AC_inv_dsy * DERX_0,
+    [0][1][1]  = AC_inv_dsx * AC_inv_dsy * DERX_1,
+    [0][2][2]  = AC_inv_dsx * AC_inv_dsy * DERX_2,
+    [0][3][3]  = AC_inv_dsx * AC_inv_dsy * DERX_3,
+    [0][-3][3] = -AC_inv_dsx * AC_inv_dsy * DERX_3,
+    [0][-2][2] = -AC_inv_dsx * AC_inv_dsy * DERX_2,
+    [0][-1][1] = -AC_inv_dsx * AC_inv_dsy * DERX_1,
+    [0][1][-1] = -AC_inv_dsx * AC_inv_dsy * DERX_1,
+    [0][2][-2] = -AC_inv_dsx * AC_inv_dsy * DERX_2,
+    [0][3][-3] = -AC_inv_dsx * AC_inv_dsy * DERX_3
+}
+
+Stencil derxz {
+    [-3][0][-3] = AC_inv_dsx * AC_inv_dsz * DERX_3,
+    [-2][0][-2] = AC_inv_dsx * AC_inv_dsz * DERX_2,
+    [-1][0][-1] = AC_inv_dsx * AC_inv_dsz * DERX_1,
+    [0][0][0]  = AC_inv_dsx * AC_inv_dsz * DERX_0,
+    [1][0][1]  = AC_inv_dsx * AC_inv_dsz * DERX_1,
+    [2][0][2]  = AC_inv_dsx * AC_inv_dsz * DERX_2,
+    [3][0][3]  = AC_inv_dsx * AC_inv_dsz * DERX_3,
+    [-3][0][3] = -AC_inv_dsx * AC_inv_dsz * DERX_3,
+    [-2][0][2] = -AC_inv_dsx * AC_inv_dsz * DERX_2,
+    [-1][0][1] = -AC_inv_dsx * AC_inv_dsz * DERX_1,
+    [1][0][-1] = -AC_inv_dsx * AC_inv_dsz * DERX_1,
+    [2][0][-2] = -AC_inv_dsx * AC_inv_dsz * DERX_2,
+    [3][0][-3] = -AC_inv_dsx * AC_inv_dsz * DERX_3
+}
+
+Stencil deryz {
+    [-3][-3][0] = AC_inv_dsy * AC_inv_dsz * DERX_3,
+    [-2][-2][0] = AC_inv_dsy * AC_inv_dsz * DERX_2,
+    [-1][-1][0] = AC_inv_dsy * AC_inv_dsz * DERX_1,
+    [0][0][0]  = AC_inv_dsy * AC_inv_dsz * DERX_0,
+    [1][1][0]  = AC_inv_dsy * AC_inv_dsz * DERX_1,
+    [2][2][0]  = AC_inv_dsy * AC_inv_dsz * DERX_2,
+    [3][3][0]  = AC_inv_dsy * AC_inv_dsz * DERX_3,
+    [-3][3][0] = -AC_inv_dsy * AC_inv_dsz * DERX_3,
+    [-2][2][0] = -AC_inv_dsy * AC_inv_dsz * DERX_2,
+    [-1][1][0] = -AC_inv_dsy * AC_inv_dsz * DERX_1,
+    [1][-1][0] = -AC_inv_dsy * AC_inv_dsz * DERX_1,
+    [2][-2][0] = -AC_inv_dsy * AC_inv_dsz * DERX_2,
+    [3][-3][0] = -AC_inv_dsy * AC_inv_dsz * DERX_3
+}
+
+vecvalue(v) {
+    return real3(value(v.x), value(v.y), value(v.z))
+}
+
+gradient(s) {
+    return real3(derx(s), dery(s), derz(s))
+}
+
+gradients(v) {
+    return Matrix(gradient(v.x), gradient(v.y), gradient(v.z))
+}
+
+divergence(v) {
+    return derx(v.x) + dery(v.y) + derz(v.z)
+}
+
+curl(v) {
+    return real3(dery(v.z) - derz(v.y), derz(v.x) - derx(v.z), derx(v.y) - dery(v.x))
+}
+
+laplace(s) {
+    return derxx(s) + deryy(s) + derzz(s)
+}
+
+veclaplace(v) {
+    return real3(laplace(v.x), laplace(v.y), laplace(v.z))
+}
+
+induction() {
+    return cross(vecvalue(UU), curl(AA)) + AC_eta * veclaplace(AA)
+    //return AC_eta * veclaplace(AA)
+}
+
+stress_tensor(v) {
+    Matrix S
+
+    S.data[0][0] = (2.0 / 3.0) * derx(v.x) - (1.0 / 3.0) * (dery(v.y) + derz(v.z))
+    S.data[0][1] = (1.0 / 2.0) * (dery(v.x) + derx(v.y))
+    S.data[0][2] = (1.0 / 2.0) * (derz(v.x) + derx(v.z))
+
+    S.data[1][0] = S.data[0][1]
+    S.data[1][1] = (2.0 / 3.0) * dery(v.y) - (1.0 / 3.0) * (derx(v.x) + derz(v.z))
+    S.data[1][2] = (1.0 / 2.0) * (derz(v.y) + dery(v.z))
+
+    S.data[2][0] = S.data[0][2]
+    S.data[2][1] = S.data[1][2]
+    S.data[2][2] = (2.0 / 3.0) * derz(v.z) - (1.0 / 3.0) * (derx(v.x) + dery(v.y))
+
+    return S
+}
+
+gradient_of_divergence(v) {
+    return real3(
+        derxx(v.x) + derxy(v.y) + derxz(v.z),
+        derxy(v.x) + deryy(v.y) + deryz(v.z),
+        derxz(v.x) + deryz(v.y) + derzz(v.z)
+    )
+}
+
+contract(mat) {
+    return dot(mat.row(0), mat.row(0)) +
+           dot(mat.row(1), mat.row(1)) +
+           dot(mat.row(2), mat.row(2))
+}
+
+continuity() {
+    return -dot(vecvalue(UU), gradient(VTXBUF_LNRHO)) - divergence(UU)
+}
+
+momentum() {
+    S = stress_tensor(UU)
+    cs2_sound = AC_cs20
+    cs2 = cs2_sound * exp(AC_gamma * value(VTXBUF_ENTROPY) / AC_cp + (AC_gamma - 1.) * (value(VTXBUF_LNRHO) - AC_lnrho0))    // check
+    //cs2 = cs2_sound * (AC_gamma * value(VTXBUF_ENTROPY) / AC_cp + (AC_gamma - 1.) * (value(VTXBUF_LNRHO) - AC_lnrho0))     //v
+    //cs2 = cs2_sound * exp(AC_gamma                         / AC_cp + (AC_gamma - 1.) * (value(VTXBUF_LNRHO) - AC_lnrho0))  //v
+    //cs2 = cs2_sound * exp(           value(VTXBUF_ENTROPY) / AC_cp + (AC_gamma - 1.) * (value(VTXBUF_LNRHO) - AC_lnrho0))  //v
+
+if (cs2_sound > 1 || cs2_sound<0) {print("ERROR cs2\n")}
+if (AC_gamma > 2 || AC_gamma< 0) {print("ERROR gama\n")}
+if (AC_cp > 1 || AC_cp<0) {print("ERROR cp\n")}
+if (AC_lnrho0 > 1 || AC_lnrho0<0) {print("ERROR lnrho0\n")}
+if (value(VTXBUF_ENTROPY)>5e0 || value(VTXBUF_ENTROPY)<-5e0) {print("ERROR ss\n")}
+if (AC_gamma * value(VTXBUF_ENTROPY) / AC_cp + (AC_gamma - 1.) * (value(VTXBUF_LNRHO) - AC_lnrho0)>14.) {print("ERROR exp\n")}
+
+    j = (1. / AC_mu0) * (gradient_of_divergence(AA) - veclaplace(AA))
+    B = curl(AA)
+    inv_rho = 1. / exp(value(VTXBUF_LNRHO))
+
+    mom = - gradients(UU) * vecvalue(UU)
+          - cs2 * ((1. / AC_cp) * gradient(VTXBUF_ENTROPY) + gradient(VTXBUF_LNRHO))
+          + inv_rho * cross(j, B)
+          + AC_nu * (veclaplace(UU) + (1. / 3.) * gradient_of_divergence(UU)
+                       + 2. * S * gradient(VTXBUF_LNRHO))
+          + AC_zeta * gradient_of_divergence(UU)
+    val1 = -gradients(UU)*vecvalue(UU)
+    uu = vecvalue(UU)
+    x_idx = globalVertexIdx.x
+    y_idx = globalVertexIdx.y
+    z_idx = globalVertexIdx.z
+    if(x_idx==9 && y_idx==9 && z_idx==9){
+        print("Check in momentum %f\n",value(VTXBUF_UUX))
+        print("uu: %d,%d,%d: %f,%f,%f\n",globalVertexIdx.x,globalVertexIdx.y,globalVertexIdx.z,uu.x,uu.y,uu.z)
+        print("%d,%d,%d: momx: %f \n",x_idx,y_idx,z_idx,mom.x)
+    }
+   // print("%d,%d,%d: momx: %f \n",x_idx,y_idx,z_idx,mom.x)
+    return mom
+}
+
+lnT() {
+    return AC_lnTT0
+         + AC_gamma * value(VTXBUF_ENTROPY) / AC_cp
+         + (AC_gamma - 1.) * (value(VTXBUF_LNRHO) - AC_lnrho0)
+}
+
+heat_conduction() {
+    inv_AC_cp = 1. / AC_cp
+    grad_ln_chi = -gradient(VTXBUF_LNRHO)
+
+    first_term = AC_gamma * inv_AC_cp * laplace(VTXBUF_ENTROPY) + (AC_gamma - 1.) * laplace(VTXBUF_LNRHO)
+    second_term = AC_gamma * inv_AC_cp * gradient(VTXBUF_ENTROPY) + (AC_gamma - 1.) * gradient(VTXBUF_LNRHO)
+    third_term = AC_gamma * (inv_AC_cp * gradient(VTXBUF_ENTROPY) + gradient(VTXBUF_LNRHO)) + grad_ln_chi
+
+    chi = AC_THERMAL_CONDUCTIVITY / (exp(value(VTXBUF_LNRHO)) * AC_cp)
+
+    return AC_cp * chi * (first_term + dot(second_term, third_term))
+}
+
+heat_conduction_const_chi() {
+
+    // lnTT=lnTT0+cv1*ss+gamma_m1*(lnrho-lnrho0)
+
+    inv_AC_cv = 1. / AC_cv
+    grad_lnrho = gradient(VTXBUF_LNRHO)
+    grad_lnT = (AC_gamma-1) * grad_lnrho            + inv_AC_cv * gradient(VTXBUF_ENTROPY)
+    del2_lnT = (AC_gamma-1) * laplace(VTXBUF_LNRHO) + inv_AC_cv * laplace(VTXBUF_ENTROPY)
+
+    return AC_cp * AC_chi * ( dot(grad_lnrho+grad_lnT,grad_lnT) + del2_lnT )
+}
+
+/*heat_conduction_kramers() {
+
+      cv1 = 1.0/AC_cv
+      rho1 = exp(-value(VTXBUF_LNRHO))    // v
+      lnTT = AC_lnTT0+cv1*value(VTXBUF_ENTROPY)+(AC_gamma-1.0)*(value(VTXBUF_LNRHO)-AC_lnrho0)  // v
+      glnrho = gradient(VTXBUF_LNRHO)     // v
+
+      glnTT  = cv1*gradient(VTXBUF_ENTROPY) + (AC_gamma-1.0)*glnrho   //  v
+      del2lnTT = cv1*laplace(VTXBUF_ENTROPY) + (AC_gamma-1.0)*laplace(VTXBUF_LNRHO)  // v
+
+      Krho1 = AC_hcond0_kramers * pow(rho1,(2.0*AC_nkramers+1.0)) * pow(exp(lnTT),(6.5*AC_nkramers))   // = K/rho   v
+
+      g2=dot(-2.0*AC_nkramers*glnrho+(6.5*AC_nkramers+1.)*glnTT,glnTT)   // v
+      return Krho1*(del2lnTT+g2)    // v
+}*/
+
+entropy() {
+    S = stress_tensor(UU)
+    inv_pT = 1. / (exp(value(VTXBUF_LNRHO)) * exp(lnT()))
+    j = (1. / AC_mu0) * (gradient_of_divergence(AA) - veclaplace(AA))
+    RHS = (0) - (0) + AC_eta * AC_mu0 * dot(j, j) +
+                       2. * exp(value(VTXBUF_LNRHO)) * AC_nu * contract(S) +
+                       AC_zeta * exp(value(VTXBUF_LNRHO)) * divergence(UU) * divergence(UU)
+
+    return -dot(vecvalue(UU), gradient(VTXBUF_ENTROPY)) + inv_pT * RHS + heat_conduction_const_chi()
+    //return -dot(vecvalue(UU), gradient(VTXBUF_ENTROPY)) // nt=2 -> Inf
+    //return inv_pT * RHS + heat_conduction()    // nt=2 -> Inf
+    //return heat_conduction()   // nt=2 -> Inf
+    //return inv_pT * RHS   // nt=2 -> Inf
+    //return RHS   // nt=2 -> Inf
+}
+
+hostdefine RK_ORDER (3)
+
+rk3(s0, s1, roc) {
+/*
+#if RK_ORDER == 1
+    // Euler
+    real alpha= 0.0, 0.0, 0.0, 0.0
+    real beta = 0.0, 1.0, 0.0, 0.0
+#elif RK_ORDER == 2
+    real alpha= 0.0,     0.0, -1.0/2.0, 0.0 
+    real beta = 0.0, 1.0/2.0,      1.0, 0.0
+#elif RK_ORDER == 3
+*/
+    real alpha = 0.,  -5./9., -153. / 128.
+    real beta =  1., 1. / 3., 15./ 16., 8. / 15.
+//#endif
+    /*
+    // This conditional has abysmal performance on AMD for some reason, better performance on NVIDIA than the workaround below
+    if AC_step_number > 0 {
+        return s1 + beta[AC_step_number] * ((alpha[AC_step_number] / beta[AC_step_number - 1]) * (s1 - s0) + roc * AC_dt)
+    } else {
+        return s1 + beta[AC_step_number] * roc * AC_dt
+    }
+    */
+    // Workaround
+    return s1 + beta[AC_step_number + 1] * ((alpha[AC_step_number] / beta[AC_step_number]) * (s1 - s0) + roc * AC_dt)
+}
+
+Kernel singlepass_solve() {
+
+    x_idx = globalVertexIdx.x
+    y_idx = globalVertexIdx.y
+    z_idx = globalVertexIdx.z
+
+    if(x_idx==123 && y_idx==61 && z_idx==8){
+     //   print("Check %f\n",value(VTXBUF_UUX))
+    }
+    write(VTXBUF_LNRHO, rk3(previous(VTXBUF_LNRHO), value(VTXBUF_LNRHO), continuity()))
+    write(VTXBUF_ENTROPY, rk3(previous(VTXBUF_ENTROPY), value(VTXBUF_ENTROPY), entropy()))
+
+    mom = momentum()
+    ind = induction()
+
+    write(VTXBUF_UUX, rk3(previous(VTXBUF_UUX), value(VTXBUF_UUX), mom.x))
+    write(VTXBUF_UUY, rk3(previous(VTXBUF_UUY), value(VTXBUF_UUY), mom.y))
+    write(VTXBUF_UUZ, rk3(previous(VTXBUF_UUZ), value(VTXBUF_UUZ), mom.z))
+
+    write(VTXBUF_AX, rk3(previous(VTXBUF_AX), value(VTXBUF_AX), ind.x))
+    write(VTXBUF_AY, rk3(previous(VTXBUF_AY), value(VTXBUF_AY), ind.y))
+    write(VTXBUF_AZ, rk3(previous(VTXBUF_AZ), value(VTXBUF_AZ), ind.z))
+}
+
+rk3_intermediate(w, roc) {
+    real alpha = 0., -5./9., -153. / 128.
+
+    // return alpha[AC_step_number] * w + roc * AC_dt
+
+    // This conditional has abysmal performance on AMD for some reason, better performance on NVIDIA than the workaround below
+    if AC_step_number > 0 {
+        return alpha[AC_step_number] * w + roc * AC_dt
+    } else {
+        return roc * AC_dt
+    }
+}
+
+rk3_final(f, w) {
+    real beta = 1. / 3., 15./ 16., 8. / 15.
+    return f + beta[AC_step_number] * w
+}
+
+Kernel twopass_solve_intermediate() {
+    write(VTXBUF_LNRHO, rk3_intermediate(previous(VTXBUF_LNRHO), continuity()))
+    write(VTXBUF_ENTROPY, rk3_intermediate(previous(VTXBUF_ENTROPY), entropy()))
+
+    mom = momentum()
+    ind = induction()
+
+    write(VTXBUF_UUX, rk3_intermediate(previous(VTXBUF_UUX), mom.x))
+    write(VTXBUF_UUY, rk3_intermediate(previous(VTXBUF_UUY), mom.y))
+    write(VTXBUF_UUZ, rk3_intermediate(previous(VTXBUF_UUZ), mom.z))
+
+    write(VTXBUF_AX, rk3_intermediate(previous(VTXBUF_AX), ind.x))
+    write(VTXBUF_AY, rk3_intermediate(previous(VTXBUF_AY), ind.y))
+    write(VTXBUF_AZ, rk3_intermediate(previous(VTXBUF_AZ), ind.z))
+}
+
+Kernel twopass_solve_final() {
+
+    write(VTXBUF_LNRHO, rk3_final(previous(VTXBUF_LNRHO), value(VTXBUF_LNRHO)))
+    write(VTXBUF_ENTROPY, rk3_final(previous(VTXBUF_ENTROPY), value(VTXBUF_ENTROPY)))
+
+    write(VTXBUF_UUX, rk3_final(previous(VTXBUF_UUX), value(VTXBUF_UUX)))
+    write(VTXBUF_UUY, rk3_final(previous(VTXBUF_UUY), value(VTXBUF_UUY)))
+    write(VTXBUF_UUZ, rk3_final(previous(VTXBUF_UUZ), value(VTXBUF_UUZ)))
+
+    write(VTXBUF_AX, rk3_final(previous(VTXBUF_AX), value(VTXBUF_AX)))
+    write(VTXBUF_AY, rk3_final(previous(VTXBUF_AY), value(VTXBUF_AY)))
+    write(VTXBUF_AZ, rk3_final(previous(VTXBUF_AZ), value(VTXBUF_AZ)))
+}
+
+Kernel check(){
+    x_idx = globalVertexIdx.x
+    y_idx = globalVertexIdx.y
+    z_idx = globalVertexIdx.z
+    if(x_idx==9 && y_idx==9 && z_idx==9){
+        print("in: %f\n",value(VTXBUF_UUX))
+        print("out: %f\n",previous(VTXBUF_UUX))
+    }
+}

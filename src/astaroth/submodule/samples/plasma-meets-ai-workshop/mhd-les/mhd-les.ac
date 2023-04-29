@@ -1,0 +1,80 @@
+#include "stencil.ach"
+#include "filter.ach"
+
+Field RHO
+Field RHOUX, RHOUY, RHOUZ
+Field BX, BY, BZ
+
+Field ADVX, ADVY, ADVZ
+#define ADV Field3(ADVX, ADVY, ADVZ)
+
+#define RHOU Field3(RHOUX, RHOUY, RHOUZ)
+#define B Field3(BX, BY, BZ)
+
+Kernel compute_adv() {
+   /*
+   uu = real3(rhou.x / value(RHO), rhou.y / value(RHO), rhou.z / value(RHO))
+
+   accelx = uu.x * vecvalue(RHOU)
+   accely = uu.y * vecvalue(RHOU)
+   accelz = uu.z * vecvalue(RHOU)
+
+   write(ADVX, accelx)
+   write(ADVY, accely)
+   write(ADVZ, accelz)
+   */
+}
+
+Kernel scale_velocity() {
+   write(RHOUX, 2.0 * value(RHOUX) - 1.0)
+   write(RHOUY, 2.0 * value(RHOUY) - 1.0)
+   write(RHOUZ, 2.0 * value(RHOUZ) - 1.0)
+}
+
+Kernel forcing() {
+   
+   sx = (2.0 * vertexIdx.x / AC_mx) - 1.0 // [-1, 1]
+   sy = (2.0 * vertexIdx.y / AC_my) - 1.0 // [-1, 1]
+
+   dist = sqrt(sx * sx + sy * sy)
+
+   force = real3(0, 0, 0)
+
+   if (dist > 0.4 && dist < 0.6) {
+      dir = (1/dist) * real3(sy, -sx, 0) // Normalized
+      scale = 1.0
+      force = scale * dir
+   }
+
+   write(RHOUX, value(RHOUX) + force.x * AC_dt)
+   write(RHOUY, value(RHOUY) + force.y * AC_dt)
+   write(RHOUZ, value(RHOUZ) + force.z * AC_dt)
+}
+
+Kernel smooth() {
+   write(RHOUX, filter(RHOUX))
+   write(RHOUY, filter(RHOUY))
+   write(RHOUZ, filter(RHOUZ))
+}
+
+continuity() {
+   return - divergence(RHOU)
+}
+
+momentum() {
+   kinematic_visc = 1e-8
+
+   rhou = vecvalue(RHOU)
+   uu = real3(rhou.x / value(RHO), rhou.y / value(RHO), rhou.z / value(RHO))
+
+   return real3(0, 0, 0) // TODO need to take each component of div alone - divergence(ADVX) etc
+}
+
+Kernel solve() {
+   write(RHO, rk3(previous(RHO), value(RHO), continuity()))
+
+   mom = momentum()
+   write(RHOUX, rk3(previous(RHOUX), value(RHOUX), mom.x))
+   write(RHOUY, rk3(previous(RHOUY), value(RHOUY), mom.y))
+   write(RHOUZ, rk3(previous(RHOUZ), value(RHOUZ), mom.z))
+}

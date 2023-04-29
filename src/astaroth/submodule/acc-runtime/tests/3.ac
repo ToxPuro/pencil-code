@@ -1,0 +1,50 @@
+// Control logic
+
+// if, loops etc
+Field ff 
+Stencil stencil {[0][0][0]=0}
+
+fn() {
+    i = 0
+    if 1 {
+        i = 1
+    }
+    if i == 1 {
+        
+    }
+}
+
+fn2() {
+    n = 10
+    for j in 0:n {
+        c = j
+        d = print("test" + j)
+    }
+    //print("test test") // TODO fix
+
+    if 0 == 0 && 1 == 1 {
+        return 0
+    }
+
+    for i in 0:1 {
+    }
+}
+
+nested() {
+}
+
+func(with, parameters, real test) {
+    if 0 == 0 && 1 == 1 {
+        c = nested(a, b, c)
+    }
+}
+
+Kernel
+a() {
+    write(lnrho, rk3(previous(lnrho), value(lnrho), continuity(lnrho)))
+}
+
+Kernel
+b() {
+    write(lnrho, rk3(previous(lnrho), value(lnrho), continuity(lnrho)))
+}

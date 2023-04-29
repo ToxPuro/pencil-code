@@ -672,7 +672,7 @@ module Boundcond
 !
       use EquationOfState
       use Shear
-      use Gpu
+      !use Gpu
       use Special, only: special_boundconds
 !
       real, dimension (:,:,:,:) :: f

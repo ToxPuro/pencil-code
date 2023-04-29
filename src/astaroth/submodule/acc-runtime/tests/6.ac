@@ -1,0 +1,287 @@
+int step
+real dt
+real INV_DS//  = 1. / 0.04908738521
+
+real cs_sound, cp_sound
+real ac_gamma, nu_visc, zeta, eta
+real lnrho0, mu0, lnT0
+
+Field lnrho, ux, uy, uz, ax, ay, az, ss
+
+#define uu Field3(ux, uy, uz)
+#define aa Field3(ax, ay, az)
+
+#define DER1_3 (INV_DS * 1. / 60.)
+#define DER1_2 (INV_DS * -3. / 20.)
+#define DER1_1 (INV_DS * 3. / 4.)
+#define DER1_0 (0)
+
+#define DER2_3 (INV_DS * INV_DS * 1. / 90.)
+#define DER2_2 (INV_DS * INV_DS * -3. / 20.)
+#define DER2_1 (INV_DS * INV_DS * 3. / 2.)
+#define DER2_0 (INV_DS * INV_DS * -49. / 18.)
+
+#define DERX_3 (INV_DS * INV_DS * 2. / 720.)
+#define DERX_2 (INV_DS * INV_DS * -27. / 720.)
+#define DERX_1 (INV_DS * INV_DS * 270. / 720.)
+#define DERX_0 (0)
+
+Stencil current {
+    [0][0][0] = 1
+}
+
+Stencil derx {
+    [-3][0][0] = -DER1_3,
+    [-2][0][0] = -DER1_2,
+    [-1][0][0] = -DER1_1,
+    [1][0][0]  = DER1_1,
+    [2][0][0]  = DER1_2,
+    [3][0][0]  = DER1_3
+}
+
+Stencil dery {
+    [0][-3][0] = -DER1_3,
+    [0][-2][0] = -DER1_2,
+    [0][-1][0] = -DER1_1,
+    [0][1][0]  = DER1_1,
+    [0][2][0]  = DER1_2,
+    [0][3][0]  = DER1_3
+}
+
+Stencil derz {
+    [0][0][-3] = -DER1_3,
+    [0][0][-2] = -DER1_2,
+    [0][0][-1] = -DER1_1,
+    [0][0][1]  = DER1_1,
+    [0][0][2]  = DER1_2,
+    [0][0][3]  = DER1_3
+}
+
+Stencil derxx {
+    [-3][0][0] = DER2_3,
+    [-2][0][0] = DER2_2,
+    [-1][0][0] = DER2_1,
+    [0][0][0]  = DER2_0,
+    [1][0][0]  = DER2_1,
+    [2][0][0]  = DER2_2,
+    [3][0][0]  = DER2_3
+}
+
+Stencil deryy {
+    [0][-3][0] = DER2_3,
+    [0][-2][0] = DER2_2,
+    [0][-1][0] = DER2_1,
+    [0][0][0]  = DER2_0,
+    [0][1][0]  = DER2_1,
+    [0][2][0]  = DER2_2,
+    [0][3][0]  = DER2_3
+}
+
+Stencil derzz {
+    [0][0][-3] = DER2_3,
+    [0][0][-2] = DER2_2,
+    [0][0][-1] = DER2_1,
+    [0][0][0]  = DER2_0,
+    [0][0][1]  = DER2_1,
+    [0][0][2]  = DER2_2,
+    [0][0][3]  = DER2_3
+}
+
+Stencil derxy {
+    [-3][-3][0] = DERX_3,
+    [-2][-2][0] = DERX_2,
+    [-1][-1][0] = DERX_1,
+    [0][0][0]  = DERX_0,
+    [1][1][0]  = DERX_1,
+    [2][2][0]  = DERX_2,
+    [3][3][0]  = DERX_3,
+    [-3][3][0] = -DERX_3,
+    [-2][2][0] = -DERX_2,
+    [-1][1][0] = -DERX_1,
+    [1][-1][0] = -DERX_1,
+    [2][-2][0] = -DERX_2,
+    [3][-3][0] = -DERX_3
+}
+
+Stencil derxz {
+    [-3][0][-3] = DERX_3,
+    [-2][0][-2] = DERX_2,
+    [-1][0][-1] = DERX_1,
+    [0][0][0]  = DERX_0,
+    [1][0][1]  = DERX_1,
+    [2][0][2]  = DERX_2,
+    [3][0][3]  = DERX_3,
+    [-3][0][3] = -DERX_3,
+    [-2][0][2] = -DERX_2,
+    [-1][0][1] = -DERX_1,
+    [1][0][-1] = -DERX_1,
+    [2][0][-2] = -DERX_2,
+    [3][0][-3] = -DERX_3
+}
+
+Stencil deryz {
+    [0][-3][-3] = DERX_3,
+    [0][-2][-2] = DERX_2,
+    [0][-1][-1] = DERX_1,
+    [0][0][0]  = DERX_0,
+    [0][1][1]  = DERX_1,
+    [0][2][2]  = DERX_2,
+    [0][3][3]  = DERX_3,
+    [0][-3][3] = -DERX_3,
+    [0][-2][2] = -DERX_2,
+    [0][-1][1] = -DERX_1,
+    [0][1][-1] = -DERX_1,
+    [0][2][-2] = -DERX_2,
+    [0][3][-3] = -DERX_3
+}
+
+veccurrent(v) {
+    return real3(current(v.x), current(v.y), current(v.z))
+}
+
+gradient(s) {
+    return real3(derx(s), dery(s), derz(s))
+}
+
+gradients(v) {
+    return Matrix(gradient(v.x), gradient(v.y), gradient(v.z))
+}
+
+divergence(v) {
+    return derx(v.x) + dery(v.y) + derz(v.z)
+}
+
+curl(v) {
+    return real3(dery(v.z) - derz(v.y), derz(v.x) - derx(v.z), derx(v.y) - dery(v.x))
+}
+
+laplace(s) {
+    return derxx(s) + deryy(s) + derzz(s)
+}
+
+veclaplace(v) {
+    return real3(laplace(v.x), laplace(v.y), laplace(v.z))
+}
+
+induction() {
+    return cross(veccurrent(uu), curl(aa)) + eta * veclaplace(aa)
+}
+
+stress_tensor(v) {
+    Matrix S
+
+    S.data[0][0] = (2.0 / 3.0) * derx(v.x) - (1.0 / 3.0) * (dery(v.y) + derz(v.z))
+    S.data[0][1] = (1.0 / 2.0) * (dery(v.x) + derx(v.y))
+    S.data[0][2] = (1.0 / 2.0) * (derz(v.x) + derx(v.z))
+
+    S.data[1][0] = S.data[0][1]
+    S.data[1][1] = (2.0 / 3.0) * dery(v.y) - (1.0 / 3.0) * (derx(v.x) + derz(v.z))
+    S.data[1][2] = (1.0 / 2.0) * (derz(v.y) + dery(v.z))
+
+    S.data[2][0] = S.data[0][2]
+    S.data[2][1] = S.data[1][2]
+    S.data[2][2] = (2.0 / 3.0) * derz(v.z) - (1.0 / 3.0) * (derx(v.x) + dery(v.y))
+
+    return S
+}
+
+gradient_of_divergence(v) {
+    return real3(
+        derxx(v.x) + derxy(v.y) + derxz(v.z),
+        derxy(v.x) + deryy(v.y) + deryz(v.z),
+        derxz(v.x) + deryz(v.y) + derzz(v.z)
+    )
+}
+
+contract(mat) {
+    return dot(mat.row(0), mat.row(0)) +
+           dot(mat.row(1), mat.row(1)) +
+           dot(mat.row(2), mat.row(2))
+}
+
+continuity() {
+    return -dot(veccurrent(uu), gradient(lnrho)) - divergence(uu)
+}
+
+momentum() {
+    S = stress_tensor(uu)
+    cs2_sound = cs_sound * cs_sound
+    cs2 = cs2_sound * exp(ac_gamma * current(ss) / cp_sound + (ac_gamma - 1.) * (current(lnrho) - lnrho0))
+
+    j = (1. / mu0) * (gradient_of_divergence(aa) - veclaplace(aa))
+    B = curl(aa)
+    inv_rho = 1. / exp(current(lnrho))
+
+    mom = - gradients(uu) * veccurrent(uu)
+          - cs2 * ((1. / cp_sound) * gradient(ss) + gradient(lnrho))
+          + inv_rho * cross(j, B)
+          + nu_visc * (veclaplace(uu) + (1. / 3.) * gradient_of_divergence(uu)
+                       + 2. * S * gradient(lnrho))
+          + zeta * gradient_of_divergence(uu)
+
+    return mom
+}
+
+lnT() {
+    return lnT0
+         + ac_gamma * current(ss) / cp_sound
+         + (ac_gamma - 1.) * (current(lnrho) - lnrho0)
+}
+
+heat_conduction() {
+    inv_cp_sound = 1. / cp_sound
+    grad_ln_chi = -gradient(lnrho)
+
+    first_term = ac_gamma * inv_cp_sound * laplace(ss) + (ac_gamma - 1.) * laplace(lnrho)
+    second_term = ac_gamma * inv_cp_sound * gradient(ss) + (ac_gamma - 1.) * gradient(lnrho)
+    third_term = ac_gamma * (inv_cp_sound * gradient(ss) + gradient(lnrho)) + grad_ln_chi
+
+    // TODO IMPORTANT what is 0.001 here?
+    chi = (0.001 / (exp(current(lnrho))) * cp_sound)
+
+    return cp_sound * chi * (first_term + dot(second_term, third_term))
+}
+
+entropy() {
+    S = stress_tensor(uu)
+    inv_pT = 1. / (exp(current(lnrho)) * exp(lnT()))
+    j = (1. / mu0) * (gradient_of_divergence(aa) - veclaplace(aa))
+    RHS = (0) - (0) + eta * mu0 * dot(j, j) +
+                       2. * exp(current(lnrho)) * nu_visc * contract(S) +
+                       zeta * exp(current(lnrho)) * divergence(uu) * divergence(uu)
+
+    return -dot(veccurrent(uu), gradient(ss)) + inv_pT * RHS + heat_conduction()
+}
+
+rk3(s0, s1, roc) {
+    real alpha = 0., -5./9., -153. / 128.
+    real beta = 1. / 3., 15./ 16., 8. / 15.
+
+    if step > 0 {
+        return s1 + beta[step] * ((alpha[step] / beta[step - 1]) * (s1 - s0) + roc * dt)
+    } else {
+        return s1 + beta[step] * roc * dt
+    }
+}
+
+writevec(vecfield, vecresult) {
+    write(vecfield.x, rk3(previous(vecfield.x), current(vecfield.x), mom.x))
+    write(vecfield.y, rk3(previous(vecfield.y), current(vecfield.y), mom.y))
+    write(vecfield.z, rk3(previous(vecfield.z), current(vecfield.z), mom.z))
+}
+
+Kernel solve() {
+    write(lnrho, rk3(previous(lnrho), current(lnrho), continuity()))
+    write(ss, rk3(previous(ss), current(ss), entropy()))
+
+    mom = momentum()
+    ind = induction()
+
+    write(ux, rk3(previous(ux), current(ux), mom.x))
+    write(uy, rk3(previous(uy), current(uy), mom.y))
+    write(uz, rk3(previous(uz), current(uz), mom.z))
+
+    write(ax, rk3(previous(ax), current(ax), ind.x))
+    write(ay, rk3(previous(ay), current(ay), ind.y))
+    write(az, rk3(previous(az), current(az), ind.z))
+}

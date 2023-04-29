@@ -155,7 +155,8 @@ module Equ
 !                     lslope_limit_diff .or. lvisc_smag .or. &
                      lvisc_smag .or. &
                      lyinyang .or. &   !!!
-                     ncoarse>1 .or. lgpu
+                     ncoarse>1 .or. lgpu 
+                     !.or. lgpu
                      ! & .or. lgpu
 !
 !  Write crash snapshots to the hard disc if the time-step is very low.
@@ -333,7 +334,12 @@ module Equ
 !
       call timing('pde','after "after_boundary" calls')
 !
+      print*, 'rhs check:',itsub,':',iproc,':',f(10,10,10,1:8)
+      ! write(80+iproc,*) 'itsub=', itsub
+
+      ! write(88+iproc,'(12(f11.6,1x))') f(l1:l2,m1:m2,n1:n2,1:8)
       if (lgpu) then
+        print*,"l1 etc on pencil code", l1,l2,m1,m2,n1,n2
         call rhs_gpu(f,itsub,early_finalize)
         if (ldiagnos.or.l1davgfirst.or.l1dphiavg.or.l2davgfirst) then
           call copy_farray_from_GPU(f)

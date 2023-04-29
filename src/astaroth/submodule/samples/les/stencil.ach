@@ -1,0 +1,237 @@
+int AC_step_number
+real AC_dt
+//real AC_dsx, AC_dsy, AC_dsz // WARNING UNUSED! NEED TO BE COMPILE-TIME CONSTANTS
+
+#define DSX (0.04908738521)
+#define DSY (0.04908738521)
+#define DSZ (0.04908738521)
+#define AC_inv_dsx (1. / DSX)
+#define AC_inv_dsy (1. / DSY)
+#define AC_inv_dsz (1. / DSZ)
+
+
+#define DER1_3 (1. / 60.)
+#define DER1_2 (-3. / 20.)
+#define DER1_1 (3. / 4.)
+#define DER1_0 (0)
+
+#define DER2_3 (1. / 90.)
+#define DER2_2 (-3. / 20.)
+#define DER2_1 (3. / 2.)
+#define DER2_0 (-49. / 18.)
+
+#define DERX_3 (2. / 720.)
+#define DERX_2 (-27. / 720.)
+#define DERX_1 (270. / 720.)
+#define DERX_0 (0)
+
+Stencil value {
+    [0][0][0] = 1
+}
+
+Stencil ddx {
+    [0][0][-3] = -AC_inv_dsx * DER1_3,
+    [0][0][-2] = -AC_inv_dsx * DER1_2,
+    [0][0][-1] = -AC_inv_dsx * DER1_1,
+    [0][0][1]  = AC_inv_dsx * DER1_1,
+    [0][0][2]  = AC_inv_dsx * DER1_2,
+    [0][0][3]  = AC_inv_dsx * DER1_3
+}
+
+Stencil ddy {
+    [0][-3][0] = -AC_inv_dsy * DER1_3,
+    [0][-2][0] = -AC_inv_dsy * DER1_2,
+    [0][-1][0] = -AC_inv_dsy * DER1_1,
+    [0][1][0]  = AC_inv_dsy * DER1_1,
+    [0][2][0]  = AC_inv_dsy * DER1_2,
+    [0][3][0]  = AC_inv_dsy * DER1_3
+}
+
+Stencil ddz {
+    [-3][0][0] = -AC_inv_dsz * DER1_3,
+    [-2][0][0] = -AC_inv_dsz * DER1_2,
+    [-1][0][0] = -AC_inv_dsz * DER1_1,
+    [1][0][0]  = AC_inv_dsz * DER1_1,
+    [2][0][0]  = AC_inv_dsz * DER1_2,
+    [3][0][0]  = AC_inv_dsz * DER1_3
+}
+
+Stencil ddxx {
+    [0][0][-3] = AC_inv_dsx * AC_inv_dsx * DER2_3,
+    [0][0][-2] = AC_inv_dsx * AC_inv_dsx * DER2_2,
+    [0][0][-1] = AC_inv_dsx * AC_inv_dsx * DER2_1,
+    [0][0][0]  = AC_inv_dsx * AC_inv_dsx * DER2_0,
+    [0][0][1]  = AC_inv_dsx * AC_inv_dsx * DER2_1,
+    [0][0][2]  = AC_inv_dsx * AC_inv_dsx * DER2_2,
+    [0][0][3]  = AC_inv_dsx * AC_inv_dsx * DER2_3
+}
+
+Stencil ddyy {
+    [0][-3][0] = AC_inv_dsy * AC_inv_dsy * DER2_3,
+    [0][-2][0] = AC_inv_dsy * AC_inv_dsy * DER2_2,
+    [0][-1][0] = AC_inv_dsy * AC_inv_dsy * DER2_1,
+    [0][0][0]  = AC_inv_dsy * AC_inv_dsy * DER2_0,
+    [0][1][0]  = AC_inv_dsy * AC_inv_dsy * DER2_1,
+    [0][2][0]  = AC_inv_dsy * AC_inv_dsy * DER2_2,
+    [0][3][0]  = AC_inv_dsy * AC_inv_dsy * DER2_3
+}
+
+Stencil ddzz {
+    [-3][0][0] = AC_inv_dsz * AC_inv_dsz * DER2_3,
+    [-2][0][0] = AC_inv_dsz * AC_inv_dsz * DER2_2,
+    [-1][0][0] = AC_inv_dsz * AC_inv_dsz * DER2_1,
+    [0][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_0,
+    [1][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_1,
+    [2][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_2,
+    [3][0][0]  = AC_inv_dsz * AC_inv_dsz * DER2_3
+}
+
+Stencil ddxy {
+    [0][-3][-3] = AC_inv_dsx * AC_inv_dsy * DERX_3,
+    [0][-2][-2] = AC_inv_dsx * AC_inv_dsy * DERX_2,
+    [0][-1][-1] = AC_inv_dsx * AC_inv_dsy * DERX_1,
+    [0][0][0]  = AC_inv_dsx * AC_inv_dsy * DERX_0,
+    [0][1][1]  = AC_inv_dsx * AC_inv_dsy * DERX_1,
+    [0][2][2]  = AC_inv_dsx * AC_inv_dsy * DERX_2,
+    [0][3][3]  = AC_inv_dsx * AC_inv_dsy * DERX_3,
+    [0][-3][3] = -AC_inv_dsx * AC_inv_dsy * DERX_3,
+    [0][-2][2] = -AC_inv_dsx * AC_inv_dsy * DERX_2,
+    [0][-1][1] = -AC_inv_dsx * AC_inv_dsy * DERX_1,
+    [0][1][-1] = -AC_inv_dsx * AC_inv_dsy * DERX_1,
+    [0][2][-2] = -AC_inv_dsx * AC_inv_dsy * DERX_2,
+    [0][3][-3] = -AC_inv_dsx * AC_inv_dsy * DERX_3
+}
+
+Stencil ddxz {
+    [-3][0][-3] = AC_inv_dsx * AC_inv_dsz * DERX_3,
+    [-2][0][-2] = AC_inv_dsx * AC_inv_dsz * DERX_2,
+    [-1][0][-1] = AC_inv_dsx * AC_inv_dsz * DERX_1,
+    [0][0][0]  = AC_inv_dsx * AC_inv_dsz * DERX_0,
+    [1][0][1]  = AC_inv_dsx * AC_inv_dsz * DERX_1,
+    [2][0][2]  = AC_inv_dsx * AC_inv_dsz * DERX_2,
+    [3][0][3]  = AC_inv_dsx * AC_inv_dsz * DERX_3,
+    [-3][0][3] = -AC_inv_dsx * AC_inv_dsz * DERX_3,
+    [-2][0][2] = -AC_inv_dsx * AC_inv_dsz * DERX_2,
+    [-1][0][1] = -AC_inv_dsx * AC_inv_dsz * DERX_1,
+    [1][0][-1] = -AC_inv_dsx * AC_inv_dsz * DERX_1,
+    [2][0][-2] = -AC_inv_dsx * AC_inv_dsz * DERX_2,
+    [3][0][-3] = -AC_inv_dsx * AC_inv_dsz * DERX_3
+}
+
+Stencil ddyz {
+    [-3][-3][0] = AC_inv_dsy * AC_inv_dsz * DERX_3,
+    [-2][-2][0] = AC_inv_dsy * AC_inv_dsz * DERX_2,
+    [-1][-1][0] = AC_inv_dsy * AC_inv_dsz * DERX_1,
+    [0][0][0]  = AC_inv_dsy * AC_inv_dsz * DERX_0,
+    [1][1][0]  = AC_inv_dsy * AC_inv_dsz * DERX_1,
+    [2][2][0]  = AC_inv_dsy * AC_inv_dsz * DERX_2,
+    [3][3][0]  = AC_inv_dsy * AC_inv_dsz * DERX_3,
+    [-3][3][0] = -AC_inv_dsy * AC_inv_dsz * DERX_3,
+    [-2][2][0] = -AC_inv_dsy * AC_inv_dsz * DERX_2,
+    [-1][1][0] = -AC_inv_dsy * AC_inv_dsz * DERX_1,
+    [1][-1][0] = -AC_inv_dsy * AC_inv_dsz * DERX_1,
+    [2][-2][0] = -AC_inv_dsy * AC_inv_dsz * DERX_2,
+    [3][-3][0] = -AC_inv_dsy * AC_inv_dsz * DERX_3
+}
+
+vecvalue(v) {
+    return real3(value(v.x), value(v.y), value(v.z))
+}
+
+vecvalue_abs(v) {
+    return real3(fabs(value(v.x)), fabs(value(v.y)), fabs(value(v.z)))
+}
+
+gradient(s) {
+    return real3(ddx(s), ddy(s), ddz(s))
+}
+
+gradients(v) {
+    return Matrix(gradient(v.x), gradient(v.y), gradient(v.z))
+}
+
+divergence(v) {
+    return ddx(v.x) + ddy(v.y) + ddz(v.z)
+}
+
+curl(v) {
+    return real3(ddy(v.z) - ddz(v.y), ddz(v.x) - ddx(v.z), ddx(v.y) - ddy(v.x))
+}
+
+laplace(s) {
+    return ddxx(s) + ddyy(s) + ddzz(s)
+}
+
+veclaplace(v) {
+    return real3(laplace(v.x), laplace(v.y), laplace(v.z))
+}
+
+gradient_of_divergence(v) {
+    return real3(
+        ddxx(v.x) + ddxy(v.y) + ddxz(v.z),
+        ddxy(v.x) + ddyy(v.y) + ddyz(v.z),
+        ddxz(v.x) + ddyz(v.y) + ddzz(v.z)
+    )
+}
+
+contract(mat) {
+    return dot(mat.row(0), mat.row(0)) +
+           dot(mat.row(1), mat.row(1)) +
+           dot(mat.row(2), mat.row(2))
+}
+
+
+rk3(s0, s1, roc) {
+    /*
+    real alpha = 0., -5./9., -153. / 128.
+    real beta = 1. / 3., 15./ 16., 8. / 15.
+
+    // This conditional has abysmal performance on AMD for some reason, better performance on NVIDIA than the workaround below
+    if AC_step_number > 0 {
+        return s1 + beta[AC_step_number] * ((alpha[AC_step_number] / beta[AC_step_number - 1]) * (s1 - s0) + roc * AC_dt)
+    } else {
+        return s1 + beta[AC_step_number] * roc * AC_dt
+    }
+    */
+    // Workaround
+    real alpha = 0., -5./9., -153. / 128.
+    real beta  = 1., 1. / 3., 15./ 16., 8. / 15.
+
+
+    #ifndef NDEBUG
+    if (AC_step_number >= len(alpha) || AC_step_number + 1 >= len(beta)) {
+        print("AC_step_number invalid: '%d'\n", AC_step_number)
+    }
+    #endif
+    return s1 + beta[AC_step_number + 1] * ((alpha[AC_step_number] / beta[AC_step_number]) * (s1 - s0) + roc * AC_dt)
+}
+
+rk3_intermediate(w, roc) {
+    real alpha = 0., -5./9., -153. / 128.
+
+    #ifndef NDEBUG
+    if (AC_step_number >= len(alpha)) {
+        print("AC_step_number invalid: '%d'\n", AC_step_number)
+    }
+    #endif
+
+    // return alpha[AC_step_number] * w + roc * AC_dt
+
+    // TODO NOTE abysmal performance on AMD, needs a workaround like in rk3() 
+    if AC_step_number > 0 {
+        return alpha[AC_step_number] * w + roc * AC_dt
+    } else {
+        return roc * AC_dt
+    }
+}
+
+rk3_final(f, w) {
+    real beta = 1. / 3., 15./ 16., 8. / 15.
+
+    #ifndef NDEBUG
+    if (AC_step_number >= len(beta)) {
+        print("AC_step_number invalid: '%d'\n", AC_step_number)
+    }
+    #endif
+    return f + beta[AC_step_number] * w
+}

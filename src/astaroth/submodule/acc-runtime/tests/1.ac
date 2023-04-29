@@ -1,0 +1,36 @@
+// Math
+
+Field ff
+Stencil stencil {[0][0][0]=0}
+
+Kernel kernel() {
+  a
+  b
+  Field lnrho
+
+  a = -1
+  b = 1 + 2
+  c = 1 - 1
+  c = (1 - 1)
+  c = (-1 + 2)
+  d = (2 - 1)
+  e = -1 + 2 * (3 - 4) / 5.0 * (5 / 4 * 2)
+  f *= -1
+  g /= -1 * -1 / (-1 * -1)
+  + 1
+  h -= (a + 1)
+  y = fn(1, 2) * -fn(fn(1, 2, c)) * fn()
+  yy = real(1)
+
+  // Struct member access
+  z = a.x * a.y + c.z
+
+  z.z = 1
+  d = z.f
+
+  hello[0] = 1
+  hello[0][0] = 1
+  hello.data = 1
+  hello[0].data = 1
+  hello.data[0][1].x[1][1][1].x.y.z = test.dostuff(notlegalonthelhs)
+}

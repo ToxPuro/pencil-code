@@ -1,0 +1,14 @@
+# Attribute file for Git to avoid superficial/invisible changes
+# caused by modifying the code with different text editors / operating systems
+# See https://help.github.com/en/articles/dealing-with-line-endings
+
+#Set the default behavior, in case people don't have core.autocrlf set.
+* text=auto
+
+# Explicitly declare text files you want to always be normalized and converted
+# to native line endings on checkout.
+*.c text
+*.h text
+*.cu text
+*.cuh text
+*.txt text

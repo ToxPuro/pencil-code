@@ -1,0 +1,5 @@
+module purge
+
+module load openmp/4.1.2-cuda
+module load cuda
+module load cmake

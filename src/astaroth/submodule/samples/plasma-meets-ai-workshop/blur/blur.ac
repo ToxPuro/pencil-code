@@ -1,0 +1,17 @@
+Field field0
+
+hostdefine STENCIL_ORDER (2) // may not be needed as long as this <= default
+
+#define COEFF (1. / 9.)
+Stencil filter {
+    [0][-1][-1] = (1.0 / 9.0),
+    [0][-1][0] = (1.0 / 9.0),
+    //[0][-1][1] = ...
+    // EXERCISE: fill in the proper coefficients for a 2D blur filter in the x-y dimension
+}
+
+Kernel blur() {
+    // EXERCISE: use function `write(Field, AcReal)` to write the result of the filter operation
+    // to the output buffer
+    //write(..., ...)
+}

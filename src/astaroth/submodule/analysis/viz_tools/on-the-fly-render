@@ -1,0 +1,79 @@
+#!/bin/bash
+
+print_usage(){
+    echo "$0 --input <input_dir> --output <output_dir> --dims <x,y> --delay <seconds> sbatch_file"
+}
+
+OPTS=`getopt -o i:o:d:h -l input:,output:,dims:,delay:,help -n "$0"  -- "$@"`
+if [ $? != 0 ] ; then echo "Failed to parse args" >&2 ; exit 1 ; fi
+
+eval set -- "$OPTS"
+
+input_dir=output-slices
+output_dir=output-slices-rendered
+delay=10
+
+simulation_running=0
+
+while true;do
+case "$1" in
+-h|--help)
+        print_usage
+        exit 0
+        ;;
+-i|--input)
+	shift
+	input_dir=$1
+	;;
+-o|--output)
+        shift
+        output_dir=$1
+        ;;
+-d|--dims)
+        shift
+	OLDIFS=$IFS
+	IFS=','
+	read -a dims <<< "$1"
+	IFS=$OLDIFS
+        ;;
+--delay)
+	shift
+	delay=$1
+	;;
+--)
+        shift
+        break
+        ;;
+*)
+        break
+        ;;
+esac
+shift
+done
+
+sbatch_file=$1
+
+if [[ ${#dims[@]} -ne 2 ]]; then
+    printf "Error: please give dims as two values separated by a comma, e.g. --dims=128,256\n"
+    print_usage
+    exit 1
+fi
+
+if [[ -z "$input_dir" ]] ;then
+    printf "Error: input_dir is not defined:\"$input_dir\"\n"
+    print_usage
+    exit 1
+fi
+
+if [[ -z "$output_dir" ]] ;then
+    printf "Error: output_dir is not defined:\"$output_dir\"\n"
+    print_usage
+    exit 1
+fi
+
+sim_job_id=$(sbatch --parsable $sbatch_file)
+printf "Submitted batch job $sim_job_id\n"
+
+printf "Submitting secondary recurring batch job to do on-the-fly rendering\n"
+script_dir=$(realpath $(dirname "${BASH_SOURCE[0]}"))
+sbatch --begin=now+$delay ${script_dir}/render_frames_on_the_fly.batch --input $input_dir --output $output_dir --dims ${dims[0]},${dims[1]} --sim-job $sim_job_id --dims ${dims[0]},${dims[1]} --delay $delay

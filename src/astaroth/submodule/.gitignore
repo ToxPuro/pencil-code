@@ -1,0 +1,30 @@
+asth-test.out.*
+*.pyc
+symb-test.out.*
+*.o
+DONE
+*.aux
+*.dvi
+*.log
+*.out
+*.swp
+*.tex~
+*.txt~
+*.bib~
+*eps-converted-to.pdf
+scripts/py_animate_data~
+scripts/py_compare_snapshot~
+scripts/py_show_ts~
+scripts/py_visual_data~
+*.blg
+*.spl
+makefile~
+*~
+
+# Build directories
+build/
+build*/
+benchmark-data/
+
+# Clangd files
+.cache/

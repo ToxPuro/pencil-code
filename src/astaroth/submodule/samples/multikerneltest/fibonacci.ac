@@ -1,0 +1,33 @@
+uniform ScalarField VTXBUF_FIBO;
+
+in ScalarField fibo_in(VTXBUF_FIBO);
+out ScalarField fibo_out(VTXBUF_FIBO);
+
+Preprocessed Scalar
+value(in ScalarField vertex)
+{
+    return vertex[vertexIdx];
+}
+
+Kernel void
+clear()
+{
+    fibo_out = 0;
+}
+
+Kernel void
+set()
+{
+    fibo_out = 1;
+}
+
+Kernel void
+step()
+{
+    fibo_out += value(fibo_in);
+}
+
+Kernel void
+solve()
+{
+} // dummy kernel for integration, hack

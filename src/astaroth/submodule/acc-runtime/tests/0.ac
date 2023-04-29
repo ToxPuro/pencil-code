@@ -1,0 +1,41 @@
+// Global variables and defines
+
+// Comment test
+
+/*
+    Block comment test
+*/
+Field a
+Stencil b {
+	[0][0][0] = 1
+}
+
+Kernel kernel() {
+  dt = 1.
+  dtt = 1e6
+  dttt = 1e-128
+  dtttt = 1.f
+  dttttt = 0.2d
+  step = 0
+  int dsx = 0
+  real dsy
+  Field lnrho
+  Field ux, uy, uz
+  real a, b, c, d
+
+  inv_dsx  = 1. / 0.04908738521
+
+  var0 = 1    // The type of local variables can be left out (implicit typing)
+  var1 = 1.0  // Implicit precision (determined based on compilation flags)
+  var2 = 1.   // Trailing zero can be left out
+  var3 = 1e3  // E notation
+  var4 = 1.f  // Explicit single-precision
+  var5 = 0.1d // Explicit double-precision
+  var6 = "Hello"
+
+  int arr0 = 1, 2, 3
+  real arr1 = 1.0, 2.0, 3.0
+
+  var7 = real(1)        // Cast
+  vec0 = real3(1, 2, 3) // Cast
+}

@@ -1,0 +1,168 @@
+// A Working Program
+
+int step
+real dt// = 1e-3
+
+real INV_DS//  = 1. / 0.04908738521
+
+Field lnrho, ux, uy, uz
+
+#define DER1_3 (INV_DS * 1. / 60.)
+#define DER1_2 (INV_DS * -3. / 20.)
+#define DER1_1 (INV_DS * 3. / 4.)
+#define DER1_0 (0)
+
+#define DER2_3 (INV_DS * INV_DS * 1. / 90.)
+#define DER2_2 (INV_DS * INV_DS * -3. / 20.)
+#define DER2_1 (INV_DS * INV_DS * 3. / 2.)
+#define DER2_0 (INV_DS * INV_DS * -49. / 18.)
+
+#define DERX_3 (INV_DS * INV_DS * 2. / 720.)
+#define DERX_2 (INV_DS * INV_DS * -27. / 720.)
+#define DERX_1 (INV_DS * INV_DS * 270. / 720.)
+#define DERX_0 (0)
+
+Stencil value {
+    [0][0][0] = 1
+}
+
+Stencil derx {
+    [-3][0][0] = -DER1_3,
+    [-2][0][0] = -DER1_2,
+    [-1][0][0] = -DER1_1,
+    [1][0][0]  = DER1_1,
+    [2][0][0]  = DER1_2,
+    [3][0][0]  = DER1_3
+}
+
+Stencil dery {
+    [0][-3][0] = -DER1_3,
+    [0][-2][0] = -DER1_2,
+    [0][-1][0] = -DER1_1,
+    [0][1][0]  = DER1_1,
+    [0][2][0]  = DER1_2,
+    [0][3][0]  = DER1_3
+}
+
+Stencil derz {
+    [0][0][-3] = -DER1_3,
+    [0][0][-2] = -DER1_2,
+    [0][0][-1] = -DER1_1,
+    [0][0][1]  = DER1_1,
+    [0][0][2]  = DER1_2,
+    [0][0][3]  = DER1_3
+}
+
+Stencil derxx {
+    [-3][0][0] = DER2_3,
+    [-2][0][0] = DER2_2,
+    [-1][0][0] = DER2_1,
+    [0][0][0]  = DER2_0,
+    [1][0][0]  = DER2_1,
+    [2][0][0]  = DER2_2,
+    [3][0][0]  = DER2_3
+}
+
+Stencil deryy {
+    [0][-3][0] = DER2_3,
+    [0][-2][0] = DER2_2,
+    [0][-1][0] = DER2_1,
+    [0][0][0]  = DER2_0,
+    [0][1][0]  = DER2_1,
+    [0][2][0]  = DER2_2,
+    [0][3][0]  = DER2_3
+}
+
+Stencil derzz {
+    [0][0][-3] = DER2_3,
+    [0][0][-2] = DER2_2,
+    [0][0][-1] = DER2_1,
+    [0][0][0]  = DER2_0,
+    [0][0][1]  = DER2_1,
+    [0][0][2]  = DER2_2,
+    [0][0][3]  = DER2_3
+}
+
+Stencil derxy {
+    [-3][-3][0] = DERX_3,
+    [-2][-2][0] = DERX_2,
+    [-1][-1][0] = DERX_1,
+    [0][0][0]  = DERX_0,
+    [1][1][0]  = DERX_1,
+    [2][2][0]  = DERX_2,
+    [3][3][0]  = DERX_3,
+    [-3][3][0] = -DERX_3,
+    [-2][2][0] = -DERX_2,
+    [-1][1][0] = -DERX_1,
+    [1][-1][0] = -DERX_1,
+    [2][-2][0] = -DERX_2,
+    [3][-3][0] = -DERX_3
+}
+
+Stencil derxz {
+    [-3][0][-3] = DERX_3,
+    [-2][0][-2] = DERX_2,
+    [-1][0][-1] = DERX_1,
+    [0][0][0]  = DERX_0,
+    [1][0][1]  = DERX_1,
+    [2][0][2]  = DERX_2,
+    [3][0][3]  = DERX_3,
+    [-3][0][3] = -DERX_3,
+    [-2][0][2] = -DERX_2,
+    [-1][0][1] = -DERX_1,
+    [1][0][-1] = -DERX_1,
+    [2][0][-2] = -DERX_2,
+    [3][0][-3] = -DERX_3
+}
+
+Stencil deryz {
+    [0][-3][-3] = DERX_3,
+    [0][-2][-2] = DERX_2,
+    [0][-1][-1] = DERX_1,
+    [0][0][0]  = DERX_0,
+    [0][1][1]  = DERX_1,
+    [0][2][2]  = DERX_2,
+    [0][3][3]  = DERX_3,
+    [0][-3][3] = -DERX_3,
+    [0][-2][2] = -DERX_2,
+    [0][-1][1] = -DERX_1,
+    [0][1][-1] = -DERX_1,
+    [0][2][-2] = -DERX_2,
+    [0][3][-3] = -DERX_3
+}
+
+vecvalue(v)
+{
+    return real3(value(v.x), value(v.y), value(v.z))
+}
+
+gradient(s)
+{
+    return real3(derx(s), dery(s), derz(s))
+}
+
+divergence(v)
+{
+    return derx(v.x) + dery(v.y) + derz(v.z)
+}
+
+continuity() {
+    uu = Field3(ux, uy, uz)
+    return -dot(vecvalue(uu), gradient(lnrho)) - divergence(uu)
+}
+
+rk3(s0, s1, roc) {
+    real alpha = 0., -5./9., -153. / 128.
+    real beta = 1. / 3., 15./ 16., 8. / 15.
+
+    if step > 0 {
+        return s1 + beta[step] * ((alpha[step] / beta[step - 1]) * (s1 - s0) + roc * dt)
+    } else {
+        return s1 + beta[step] * roc * dt
+    }
+}
+
+Kernel
+solve() {
+    write(lnrho, rk3(previous(lnrho), value(lnrho), continuity()))
+}

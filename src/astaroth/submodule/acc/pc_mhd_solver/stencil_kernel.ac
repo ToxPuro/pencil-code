@@ -1,0 +1,660 @@
+#include <stdderiv.h>
+#include <../../../PC_moduleflags.h>
+#
+#define LUPWD (0)
+#define LSINK (0)
+#define LGRAVITY (0)
+#ifndef LTEMPERATURE
+  #define LTEMPERATURE (0)
+#endif
+
+#define AC_THERMAL_CONDUCTIVITY (0.001) // TODO: make an actual config parameter
+#define H_CONST (0)                     // TODO: make an actual config parameter
+#define C_CONST (0)                     // TODO: make an actual config parameter
+
+// Int params
+uniform int AC_max_steps;
+uniform int AC_save_steps;
+uniform int AC_bin_steps;
+uniform int AC_bc_type;
+uniform int AC_start_step;
+
+// Real params
+uniform Scalar AC_dt;
+uniform Scalar AC_max_time;
+// Spacing
+uniform Scalar AC_dsmin;
+// physical grid
+uniform Scalar AC_xlen;
+uniform Scalar AC_ylen;
+uniform Scalar AC_zlen;
+uniform Scalar AC_xorig;
+uniform Scalar AC_yorig;
+uniform Scalar AC_zorig;
+// Physical units
+uniform Scalar AC_unit_density;
+uniform Scalar AC_unit_velocity;
+uniform Scalar AC_unit_length;
+// properties of gravitating star
+uniform Scalar AC_star_pos_x;
+uniform Scalar AC_star_pos_y;
+uniform Scalar AC_star_pos_z;
+uniform Scalar AC_M_star;
+// properties of sink particle
+uniform Scalar AC_sink_pos_x;
+uniform Scalar AC_sink_pos_y;
+uniform Scalar AC_sink_pos_z;
+uniform Scalar AC_M_sink;
+uniform Scalar AC_M_sink_init;
+uniform Scalar AC_M_sink_Msun;
+uniform Scalar AC_soft;
+uniform Scalar AC_accretion_range;
+uniform Scalar AC_switch_accretion;
+//  Run params
+uniform Scalar AC_cdt;
+uniform Scalar AC_cdtv;
+uniform Scalar AC_cdts;
+uniform Scalar AC_nu;
+uniform Scalar AC_cs;
+uniform Scalar AC_eta;
+uniform Scalar AC_mu0;
+uniform Scalar AC_cp;
+uniform Scalar AC_gamma;
+uniform Scalar AC_cv;
+uniform Scalar AC_lnT0;
+uniform Scalar AC_lnrho0;
+uniform Scalar AC_zeta;
+uniform Scalar AC_trans;
+uniform Scalar AC_chi;
+//  Other
+uniform Scalar AC_bin_save_t;
+//  Initial condition params
+uniform Scalar AC_ampl_lnrho;
+uniform Scalar AC_ampl_uu;
+uniform Scalar AC_angl_uu;
+uniform Scalar AC_lnrho_edge;
+uniform Scalar AC_lnrho_out;
+//  Forcing parameters. User configured.
+uniform Scalar AC_forcing_magnitude;
+uniform Scalar AC_relhel;
+uniform Scalar AC_kmin;
+uniform Scalar AC_kmax;
+//  Forcing parameters. Set by the generator.
+uniform Scalar AC_forcing_phase;
+uniform Scalar AC_k_forcex;
+uniform Scalar AC_k_forcey;
+uniform Scalar AC_k_forcez;
+uniform Scalar AC_kaver;
+uniform Scalar AC_ff_hel_rex;
+uniform Scalar AC_ff_hel_rey;
+uniform Scalar AC_ff_hel_rez;
+uniform Scalar AC_ff_hel_imx;
+uniform Scalar AC_ff_hel_imy;
+uniform Scalar AC_ff_hel_imz;
+//  Additional helper params  //  (deduced from other params do not set these directly!)
+uniform Scalar AC_G_const;
+uniform Scalar AC_GM_star;
+uniform Scalar AC_unit_mass;
+uniform Scalar AC_sq2GM_star;
+uniform Scalar AC_cs2;
+#if LFORCING
+  //#include <pcstyleforcing.h>
+uniform Vector AC_kk;
+uniform Vector AC_coef1;
+uniform Vector AC_coef2;
+uniform Vector AC_coef3;
+uniform Vector AC_fda;
+
+uniform Scalar AC_k1_ff;
+uniform Scalar AC_phase;
+uniform Scalar AC_fact;
+
+uniform ScalarArray AC_profx_ampl;
+uniform ScalarArray AC_profy_ampl;
+uniform ScalarArray AC_profz_ampl;
+uniform ScalarArray AC_profx_hel;
+uniform ScalarArray AC_profy_hel;
+uniform ScalarArray AC_profz_hel;
+
+uniform int AC_iforcing_zsym;
+
+#endif
+/*
+ * =============================================================================
+ * User-defined vertex buffers
+ * =============================================================================
+ */
+#if LHYDRO
+uniform ScalarField VTXBUF_UUX;
+uniform ScalarField VTXBUF_UUY;
+uniform ScalarField VTXBUF_UUZ;
+#endif
+#if LDENSITY
+uniform ScalarField VTXBUF_LNRHO;
+#endif
+#if LENTROPY
+uniform ScalarField VTXBUF_ENTROPY;
+#endif
+#if LMAGNETIC
+uniform ScalarField VTXBUF_AX;
+uniform ScalarField VTXBUF_AY;
+uniform ScalarField VTXBUF_AZ;
+#endif
+
+#if LSINK
+uniform ScalarField VTXBUF_ACCRETION;
+#endif
+
+#if LUPWD
+
+Preprocessed Scalar
+der6x_upwd(in ScalarField vertex)
+{
+    Scalar inv_ds = AC_inv_dsx;
+
+    return (Scalar){(1.0 / 60.0) * inv_ds *
+                    (-20.0 * vertex[vertexIdx.x, vertexIdx.y, vertexIdx.z] +
+                     15.0 * (vertex[vertexIdx.x + 1, vertexIdx.y, vertexIdx.z] +
+                             vertex[vertexIdx.x - 1, vertexIdx.y, vertexIdx.z]) -
+                     6.0 * (vertex[vertexIdx.x + 2, vertexIdx.y, vertexIdx.z] +
+                            vertex[vertexIdx.x - 2, vertexIdx.y, vertexIdx.z]) +
+                     vertex[vertexIdx.x + 3, vertexIdx.y, vertexIdx.z] +
+                     vertex[vertexIdx.x - 3, vertexIdx.y, vertexIdx.z])};
+}
+
+Preprocessed Scalar
+der6y_upwd(in ScalarField vertex)
+{
+    Scalar inv_ds = AC_inv_dsy;
+
+    return (Scalar){(1.0 / 60.0) * inv_ds *
+                    (-20.0 * vertex[vertexIdx.x, vertexIdx.y, vertexIdx.z] +
+                     15.0 * (vertex[vertexIdx.x, vertexIdx.y + 1, vertexIdx.z] +
+                             vertex[vertexIdx.x, vertexIdx.y - 1, vertexIdx.z]) -
+                     6.0 * (vertex[vertexIdx.x, vertexIdx.y + 2, vertexIdx.z] +
+                            vertex[vertexIdx.x, vertexIdx.y - 2, vertexIdx.z]) +
+                     vertex[vertexIdx.x, vertexIdx.y + 3, vertexIdx.z] +
+                     vertex[vertexIdx.x, vertexIdx.y - 3, vertexIdx.z])};
+}
+
+Preprocessed Scalar
+der6z_upwd(in ScalarField vertex)
+{
+    Scalar inv_ds = AC_inv_dsz;
+
+    return (Scalar){(1.0 / 60.0) * inv_ds *
+                    (-20.0 * vertex[vertexIdx.x, vertexIdx.y, vertexIdx.z] +
+                     15.0 * (vertex[vertexIdx.x, vertexIdx.y, vertexIdx.z + 1] +
+                             vertex[vertexIdx.x, vertexIdx.y, vertexIdx.z - 1]) -
+                     6.0 * (vertex[vertexIdx.x, vertexIdx.y, vertexIdx.z + 2] +
+                            vertex[vertexIdx.x, vertexIdx.y, vertexIdx.z - 2]) +
+                     vertex[vertexIdx.x, vertexIdx.y, vertexIdx.z + 3] +
+                     vertex[vertexIdx.x, vertexIdx.y, vertexIdx.z - 3])};
+}
+
+#endif
+
+#if LUPWD
+Device Scalar
+upwd_der6(in VectorField uu, in ScalarField lnrho)
+{
+    Scalar uux = fabs(value(uu).x);
+    Scalar uuy = fabs(value(uu).y);
+    Scalar uuz = fabs(value(uu).z);
+    return (Scalar){uux * der6x_upwd(lnrho) + uuy * der6y_upwd(lnrho) + uuz * der6z_upwd(lnrho)};
+}
+#endif
+
+Device Matrix
+gradients(in VectorField uu)
+{
+    return (Matrix){gradient(uu.x), gradient(uu.y), gradient(uu.z)};
+}
+
+#if LSINK
+Device Vector
+sink_gravity(int3 globalVertexIdx)
+{
+    int accretion_switch = int(AC_switch_accretion);
+    if (accretion_switch == 1) {
+        Vector force_gravity;
+        const Vector grid_pos  = (Vector){(globalVertexIdx.x - AC_nx_min) * AC_dsx,
+                                          (globalVertexIdx.y - AC_ny_min) * AC_dsy,
+                                          (globalVertexIdx.z - AC_nz_min) * AC_dsz};
+        const Scalar sink_mass = AC_M_sink;
+        const Vector sink_pos  = (Vector){AC_sink_pos_x, AC_sink_pos_y, AC_sink_pos_z};
+        const Scalar distance  = length(grid_pos - sink_pos);
+        const Scalar soft      = AC_soft;
+        // MV: The commit 083ff59 had AC_G_const defined wrong here in DSL making it exxessively
+        // strong. MV: Scalar gravity_magnitude = ... below is correct!
+        const Scalar gravity_magnitude = (AC_G_const * sink_mass) /
+                                         pow(((distance * distance) + soft * soft), 1.5);
+        const Vector direction = (Vector){(sink_pos.x - grid_pos.x) / distance,
+                                          (sink_pos.y - grid_pos.y) / distance,
+                                          (sink_pos.z - grid_pos.z) / distance};
+        force_gravity          = gravity_magnitude * direction;
+        return force_gravity;
+    }
+    else {
+        return (Vector){0.0, 0.0, 0.0};
+    }
+}
+#endif
+
+#if LSINK
+// Give Truelove density
+Device Scalar
+truelove_density(in ScalarField lnrho)
+{
+    const Scalar rho                  = exp(value(lnrho));
+    const Scalar Jeans_length_squared = (M_PI * AC_cs2) / (AC_G_const * rho);
+    const Scalar TJ_rho = ((M_PI) * ((AC_dsx * AC_dsx) / Jeans_length_squared) * AC_cs2) /
+                          (AC_G_const * AC_dsx * AC_dsx);
+    // TODO: AC_dsx will cancel out, deal with it later for optimization.
+
+    Scalar accretion_rho = TJ_rho;
+
+    return accretion_rho;
+}
+
+// This controls accretion of density/mass to the sink particle.
+Device Scalar
+sink_accretion(int3 globalVertexIdx, in ScalarField lnrho, Scalar dt)
+{
+    const Vector grid_pos           = (Vector){(globalVertexIdx.x - AC_nx_min) * AC_dsx,
+                                     (globalVertexIdx.y - AC_ny_min) * AC_dsy,
+                                     (globalVertexIdx.z - AC_nz_min) * AC_dsz};
+    const Vector sink_pos           = (Vector){AC_sink_pos_x, AC_sink_pos_y, AC_sink_pos_z};
+    const Scalar profile_range      = AC_accretion_range;
+    const Scalar accretion_distance = length(grid_pos - sink_pos);
+    int accretion_switch            = AC_switch_accretion;
+    Scalar accretion_density;
+    Scalar weight;
+
+    if (accretion_switch == 1) {
+        if ((accretion_distance) <= profile_range) {
+            // weight = 1.0;
+            // Hann window function
+            Scalar window_ratio = accretion_distance / profile_range;
+            weight              = 0.5 * (1.0 - cos(2.0 * M_PI * window_ratio));
+        }
+        else {
+            weight = 0.0;
+        }
+
+        // Truelove criterion is used as a kind of arbitrary density floor.
+        const Scalar lnrho_min = log(truelove_density(lnrho));
+        Scalar rate;
+        if (value(lnrho) > lnrho_min) {
+            rate = (exp(value(lnrho)) - exp(lnrho_min)) / dt;
+        }
+        else {
+            rate = 0.0;
+        }
+        accretion_density = weight * rate;
+    }
+    else {
+        accretion_density = 0.0;
+    }
+    return accretion_density;
+}
+
+// This controls accretion of velocity to the sink particle.
+Device Vector
+sink_accretion_velocity(int3 globalVertexIdx, in VectorField uu, Scalar dt)
+{
+    const Vector grid_pos           = (Vector){(globalVertexIdx.x - AC_nx_min) * AC_dsx,
+                                     (globalVertexIdx.y - AC_ny_min) * AC_dsy,
+                                     (globalVertexIdx.z - AC_nz_min) * AC_dsz};
+    const Vector sink_pos           = (Vector){AC_sink_pos_x, AC_sink_pos_y, AC_sink_pos_z};
+    const Scalar profile_range      = AC_accretion_range;
+    const Scalar accretion_distance = length(grid_pos - sink_pos);
+    int accretion_switch            = AC_switch_accretion;
+    Vector accretion_velocity;
+
+    if (accretion_switch == 1) {
+        Scalar weight;
+        // Step function weighting
+        // Arch of a cosine function?
+        // Cubic spline x^3 - x in range [-0.5 , 0.5]
+        if ((accretion_distance) <= profile_range) {
+            // weight = 1.0;
+            // Hann window function
+            Scalar window_ratio = accretion_distance / profile_range;
+            weight              = 0.5 * (1.0 - cos(2.0 * M_PI * window_ratio));
+        }
+        else {
+            weight = 0.0;
+        }
+
+        Vector rate;
+        // MV: Could we use divergence here ephasize velocitie which are compressive and
+        // MV: not absorbins stuff that would not be accreted anyway?
+        if (length(value(uu)) > 0.0) {
+            rate = (1.0 / dt) * value(uu);
+        }
+        else {
+            rate = (Vector){0.0, 0.0, 0.0};
+        }
+        accretion_velocity = weight * rate;
+    }
+    else {
+        accretion_velocity = (Vector){0.0, 0.0, 0.0};
+    }
+    return accretion_velocity;
+}
+#endif
+
+Device Scalar
+continuity(int3 globalVertexIdx, in VectorField uu, in ScalarField lnrho, Scalar dt)
+{
+    return -dot(value(uu), gradient(lnrho)) - divergence(uu)
+#if LUPWD
+           // This is a corrective hyperdiffusion term for upwinding.
+           + upwd_der6(uu, lnrho)
+#endif
+#if LSINK
+           - sink_accretion(globalVertexIdx, lnrho, dt) / exp(value(lnrho))
+#endif
+     ;
+}
+
+#if LENTROPY
+Device Vector
+momentum(int3 globalVertexIdx, in VectorField uu, in ScalarField lnrho, in ScalarField ss,
+         in VectorField aa, Scalar dt)
+{
+    const Matrix S   = stress_tensor(uu);
+    const Scalar cs2 = AC_cs2 * exp(AC_gamma * value(ss) / AC_cp +
+                                   (AC_gamma - 1) * (value(lnrho) - AC_lnrho0));
+#if LMAGNETIC
+    const Vector j   = (1.0 / AC_mu0) *
+                       (gradient_of_divergence(aa) - laplace_vec(aa)); // Current density
+    const Vector B = curl(aa);
+    const Scalar inv_rho = 1.0 / exp(value(lnrho));
+#endif
+    // Regex replace CPU constants with get\(AC_([a-zA-Z_0-9]*)\)
+    // \1
+    const Vector mom = -mul(gradients(uu), value(uu))
+                       -cs2 * ((1.0 / AC_cp) * gradient(ss) + gradient(lnrho)) +
+#if LMAGNETIC
+                       inv_rho * cross(j, B) +
+#endif
+                       AC_nu * (laplace_vec(uu) + (1.0 / 3.0) * gradient_of_divergence(uu) +
+                                     2.0 * mul(S, gradient(lnrho))) +
+                       AC_zeta * gradient_of_divergence(uu)
+#if LSINK
+                       // Gravity term
+                       + sink_gravity(globalVertexIdx)
+                       // Corresponding loss of momentum
+                       - //(1.0 / ( (AC_dsx*AC_dsy*AC_dsz) * exp(value(lnrho)))) *  //
+                         // Correction factor by unit mass
+                       sink_accretion_velocity(globalVertexIdx, uu, dt) // As in Lee et al.(2014)
+#endif
+                       ;
+//printf("kernel: AC_nu=  %f \n", AC_nu);
+    return mom;
+}
+#elif LTEMPERATURE
+Device Vector
+momentum(int3 globalVertexIdx, in VectorField uu, in ScalarField lnrho, in ScalarField tt)
+{
+    Vector mom;
+
+    const Matrix S = stress_tensor(uu);
+
+    const Vector pressure_term = (AC_cp - AC_cv) *
+                                 (gradient(tt) + value(tt) * gradient(lnrho));
+
+    mom = -mul(gradients(uu), value(uu)) - pressure_term +
+          AC_nu * (laplace_vec(uu) + (1.0 / 3.0) * gradient_of_divergence(uu) +
+                        2.0 * mul(S, gradient(lnrho))) +
+          AC_zeta * gradient_of_divergence(uu)
+#if LSINK
+          + sink_gravity(globalVertexIdx);
+#else
+        ;
+#endif
+
+#if LGRAVITY
+    mom = mom - (Vector){0, 0, -10.0};
+#endif
+    return mom;
+}
+#else
+Device Vector
+momentum(int3 globalVertexIdx, in VectorField uu, in ScalarField lnrho, in VectorField aa, Scalar dt)
+{
+    Vector mom;
+
+    const Matrix S = stress_tensor(uu);
+#if LMAGNETIC
+    const Vector j = (1.0 / AC_mu0) *
+                     (gradient_of_divergence(aa) - laplace_vec(aa)); // Current density
+    const Vector B = curl(aa);
+    const Scalar inv_rho = 1.0 / exp(value(lnrho));
+#endif
+    // Isothermal: we have constant speed of sound
+
+    mom = -mul(gradients(uu), value(uu)) 
+    //mom = - (Vector){dot(gradient(uu.x),value(uu)), dot(gradient(uu.y),value(uu)), dot(gradient(uu.z),value(uu))}         
+          - AC_cs2 * gradient(lnrho) +
+          AC_nu * (laplace_vec(uu) + (1.0 / 3.0) * gradient_of_divergence(uu) +
+                        2.0 * mul(S, gradient(lnrho))) +
+          AC_zeta * gradient_of_divergence(uu)
+#if LMAGNETIC
+                      + inv_rho * cross(j, B) 
+#endif
+#if LSINK
+          + sink_gravity(globalVertexIdx)
+          // Corresponding loss of momentum
+          - //(1.0 / ( (AC_dsx*AC_dsy*AC_dsz) * exp(value(lnrho)))) *  // Correction
+            // factor by unit mass
+          sink_accretion_velocity(globalVertexIdx, uu, dt) // As in Lee et al.(2014)
+        ;
+#else
+        ;
+#endif
+
+#if LGRAVITY
+    mom = mom - (Vector){0, 0, -10.0};
+#endif
+
+    return mom;
+}
+#endif
+
+#if LMAGNETIC
+Device Vector
+induction(in VectorField uu, in VectorField aa)
+{
+    // Note: We do (-nabla^2 A + nabla(nabla dot A)) instead of (nabla x (nabla
+    // x A)) in order to avoid taking the first derivative twice (did the math,
+    // yes this actually works. See pg.28 in arXiv:astro-ph/0109497)
+    // u cross B - AC_eta * AC_mu0 * (AC_mu0^-1 * [- laplace A + grad div A ])
+    const Vector B        = curl(aa);
+    const Vector lap      = laplace_vec(aa);
+
+    // Note, AC_mu0 is cancelled out
+    const Vector ind = cross(value(uu), B) + AC_eta * lap;
+    //const Vector ind = AC_eta * lap;
+
+    return ind;
+}
+#endif
+
+#if LENTROPY
+
+Device Scalar
+lnT(in ScalarField ss, in ScalarField lnrho)
+{
+    return AC_lnT0 + AC_gamma * value(ss) / AC_cp +
+           (AC_gamma - 1.0) * (value(lnrho) - AC_lnrho0);
+}
+
+// Nabla dot (K nabla T) / (rho T)
+Device Scalar
+heat_conduction(in ScalarField ss, in ScalarField lnrho)
+{
+    const Scalar inv_AC_cp = 1.0 / AC_cp;
+
+    const Vector grad_ln_chi = -gradient(lnrho);
+
+    const Scalar first_term = AC_gamma * inv_AC_cp * laplace(ss) +
+                              (AC_gamma - 1.0) * laplace(lnrho);
+    const Vector second_term = AC_gamma * inv_AC_cp * gradient(ss) +
+                               (AC_gamma - 1.0) * gradient(lnrho);
+    const Vector third_term = AC_gamma * (inv_AC_cp * gradient(ss) + gradient(lnrho)) +
+                              grad_ln_chi;
+
+    //!!!const Scalar chi = AC_THERMAL_CONDUCTIVITY / (exp(value(lnrho)) * AC_cp);
+    return AC_cp * AC_chi * (first_term + dot(second_term, third_term));
+}
+
+Device Scalar
+heating(const int i, const int j, const int k)
+{
+    return 1;
+}
+
+Device Scalar
+entropy(in ScalarField ss, in VectorField uu, in ScalarField lnrho, in VectorField aa)
+{
+    const Matrix S      = stress_tensor(uu);
+    const Scalar inv_pT = 1.0 / (exp(value(lnrho)) * exp(lnT(ss, lnrho)));
+    const Vector j      = (1.0 / AC_mu0) *
+                          (gradient_of_divergence(aa) - laplace_vec(aa)); // Current density
+    const Scalar RHS = H_CONST - C_CONST + AC_eta * AC_mu0 * dot(j, j) +
+                       2.0 * exp(value(lnrho)) * AC_nu * contract(S) +
+                       AC_zeta * exp(value(lnrho)) * divergence(uu) * divergence(uu);
+
+    return -dot(value(uu), gradient(ss)) + inv_pT * RHS + heat_conduction(ss, lnrho);
+}
+#elif LTEMPERATURE
+Device Scalar
+heat_transfer(in VectorField uu, in ScalarField lnrho, in ScalarField tt)
+{
+    const Matrix S                  = stress_tensor(uu);
+    const Scalar heat_diffusivity_k = 0.0008; // 8e-4;
+    return -dot(value(uu), gradient(tt)) + heat_diffusivity_k * laplace(tt) +
+           heat_diffusivity_k * dot(gradient(lnrho), gradient(tt)) +
+           AC_nu * contract(S) * (1.0 / AC_cv) -
+           (AC_gamma - 1) * value(tt) * divergence(uu);
+}
+#endif
+#if LFORCING
+
+Device Vector
+pcforcing(int3 vertexIdx, int3 globalVertexIdx, const Scalar dt, ScalarArray profx_ampl, ScalarArray profy_ampl,
+          ScalarArray profz_ampl, ScalarArray profx_hel, ScalarArray profy_hel, ScalarArray profz_hel)
+{
+    Vector pos = (Vector){(globalVertexIdx.x - AC_nx_min) * AC_dsx + AC_xorig + AC_dsx/2,
+                          (globalVertexIdx.y - AC_ny_min) * AC_dsy + AC_yorig + AC_dsy/2,
+                          (globalVertexIdx.z - AC_nz_min) * AC_dsz + AC_zorig + AC_dsz/2};
+    Complex fx = AC_fact * exp(Complex(0.0, AC_kk.x * AC_k1_ff * pos.x + AC_phase));
+//printf("globalVertexIdx.z= %d \n", globalVertexIdx.z);
+//, pos.x, AC_kk.x, AC_k1_ff, AC_phase, fx.x,fx.y);
+//printf("fx= %d %e %e %e \n", globalVertexIdx.x, pos.x, fx.x,fx.y);
+    Complex fy = exp(Complex(0.0, AC_kk.y * AC_k1_ff * pos.y));
+    Complex fz;
+
+    if (AC_iforcing_zsym == 0) {
+        fz = exp(Complex(0.0, AC_kk.z * AC_k1_ff * pos.z));
+    }
+    else if (AC_iforcing_zsym == 1) {
+        fz = Complex(cos(AC_kk.z * AC_k1_ff * pos.z), 0.0);
+    }
+    else if (AC_iforcing_zsym == -1) {
+        fz = Complex(sin(AC_kk.z * AC_k1_ff * pos.z), 0.0);
+    }
+    else {
+      // Failure
+    }
+
+    Complex fxyz = fx * fy * fz;
+     // TODO recheck indices
+    Scalar force_ampl    = profx_ampl[vertexIdx.x - NGHOST] * profy_ampl[vertexIdx.y] * profz_ampl[vertexIdx.z];
+    Scalar prof_hel_ampl =  profx_hel[vertexIdx.x - NGHOST] *  profy_hel[vertexIdx.y] *  profz_hel[vertexIdx.z];
+
+    Vector rhs;
+
+    rhs.x = force_ampl * AC_fda.x * (Complex(AC_coef1.x, prof_hel_ampl * AC_coef2.x) * fxyz).x;
+    rhs.y = force_ampl * AC_fda.y * (Complex(AC_coef1.y, prof_hel_ampl * AC_coef2.y) * fxyz).x;
+    rhs.z = force_ampl * AC_fda.z * (Complex(AC_coef1.z, prof_hel_ampl * AC_coef2.z) * fxyz).x;
+/*
+    rhs.x = AC_fda.x * (Complex(AC_coef1.x, AC_coef2.x) * fxyz).x;
+    rhs.y = AC_fda.y * (Complex(AC_coef1.y, AC_coef2.y) * fxyz).x;
+    rhs.z = AC_fda.z * (Complex(AC_coef1.z, AC_coef2.z) * fxyz).x;
+*/
+    return rhs;
+}
+
+#endif
+
+// Declare input and output arrays using locations specified in the
+// array enum in astaroth.h
+in ScalarField lnrho(VTXBUF_LNRHO);
+out ScalarField out_lnrho(VTXBUF_LNRHO);
+
+in VectorField uu(VTXBUF_UUX, VTXBUF_UUY, VTXBUF_UUZ);
+out VectorField out_uu(VTXBUF_UUX, VTXBUF_UUY, VTXBUF_UUZ);
+
+#if LMAGNETIC
+in VectorField aa(VTXBUF_AX, VTXBUF_AY, VTXBUF_AZ);
+out VectorField out_aa(VTXBUF_AX, VTXBUF_AY, VTXBUF_AZ);
+#endif
+
+#if LENTROPY
+in ScalarField ss(VTXBUF_ENTROPY);
+out ScalarField out_ss(VTXBUF_ENTROPY);
+#endif
+
+#if LTEMPERATURE
+in ScalarField tt(VTXBUF_TEMPERATURE);
+out ScalarField out_tt(VTXBUF_TEMPERATURE);
+#endif
+
+#if LSINK
+in ScalarField accretion(VTXBUF_ACCRETION);
+out ScalarField out_accretion(VTXBUF_ACCRETION);
+#endif
+
+Kernel void
+solve()
+{
+    Scalar dt = AC_dt;
+    out_lnrho = rk3(out_lnrho, lnrho, continuity(globalVertexIdx, uu, lnrho, dt), dt);
+
+#if LMAGNETIC
+    out_aa = rk3(out_aa, aa, induction(uu, aa), dt);
+#endif
+
+#if LENTROPY
+    out_uu = rk3(out_uu, uu, momentum(globalVertexIdx, uu, lnrho, ss, aa, dt), dt);
+    out_ss = rk3(out_ss, ss, entropy(ss, uu, lnrho, aa), dt);
+#elif LTEMPERATURE
+    out_uu = rk3(out_uu, uu, momentum(globalVertexIdx, uu, lnrho, tt, dt), dt);
+    out_tt = rk3(out_tt, tt, heat_transfer(uu, lnrho, tt), dt);
+#elif LMAGNETIC
+    out_uu = rk3(out_uu, uu, momentum(globalVertexIdx, uu, lnrho, aa, dt), dt);
+#else
+    out_uu = rk3(out_uu, uu, momentum(globalVertexIdx, uu, lnrho, dt), dt);
+#endif
+
+#if LFORCING
+    if (step_number == 2) {
+        out_uu = out_uu + 
+                 pcforcing(vertexIdx, globalVertexIdx, dt, AC_profx_ampl, AC_profy_ampl, AC_profz_ampl,
+                                                           AC_profx_hel,  AC_profy_hel,  AC_profz_hel);
+    }
+#endif
+
+#if LSINK
+    out_accretion = rk3(out_accretion, accretion, sink_accretion(globalVertexIdx, lnrho, dt),
+                        dt); // unit now is rho!
+
+    if (step_number == 2) {
+        out_accretion = out_accretion * AC_dsx * AC_dsy * AC_dsz; // unit is now mass!
+    }
+#endif
+}

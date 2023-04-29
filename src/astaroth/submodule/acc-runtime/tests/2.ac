@@ -1,0 +1,39 @@
+// Functions
+
+Field lnrho
+Stencil stencil {[0][0][0]=0}
+
+dt// = 1e-3
+//dt = 1.123e-3
+//dt = 0.1e-3
+
+fn(a, b) {
+   return 1 + 2 * (1 - 1)
+}
+
+Kernel
+solve()
+{
+    a = 1.
+    b = 2. * 8.
+    c = -fn(1, 2)
+    d = fn(3,4)
+
+    real arr1 = 1.0, 2.0, 3.0
+    print("Length of an array: %lu\n", len(arr1))
+
+    fn(1)
+    return fn(5)
+}
+
+divergence(real x, int y, z)
+{
+    return derx(x) + dery(y) + derz(z)
+}
+
+
+Kernel
+solve2()
+{
+    write(lnrho, divergence(a, b, c) * dt)
+}

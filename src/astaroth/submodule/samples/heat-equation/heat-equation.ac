@@ -1,0 +1,50 @@
+Field temperature
+real dt
+
+real dx, dy, dz
+
+Stencil value {
+    [0][0][0] = 1.
+}
+
+Stencil ddx2 {
+    [0][0][-3] = 1/90.,
+    [0][0][-2] = -3/20.,
+    [0][0][-1] = 3/2.,
+    [0][0][0]  = -49/18.,
+    [0][0][1]  = 3/2.,
+    [0][0][2]  = -3/20.,
+    [0][0][3]  = 1/90.
+}
+
+Stencil ddy2 {
+    [0][-3][0] = 1/90.,
+    [0][-2][0] = -3/20.,
+    [0][-1][0] = 3/2.,
+    [0][0][0]  = -49/18.,
+    [0][1][0]  = 3/2.,
+    [0][2][0]  = -3/20.,
+    [0][3][0]  = 1/90.
+}
+
+Stencil ddz2 {
+    [0][0][-3] = 1/90.,
+    [0][0][-2] = -3/20.,
+    [0][0][-1] = 3/2.,
+    [0][0][0]  = -49/18.,
+    [0][0][1]  = 3/2.,
+    [0][0][2]  = -3/20.,
+    [0][0][3]  = 1/90.
+}
+
+heat_equation(t) {
+    return (1. / (dx * dx)) * ddx2(t) + (1. / (dy * dy)) * ddy2(t) + (1. / (dz * dz)) * ddz2(t)
+}
+
+Kernel solve() {
+    write(temperature, value(temperature) + heat_equation(temperature) * dt)
+}
+
+Kernel init() {
+    write(temperature, 2.0 * rand_uniform() - 1.0)
+}

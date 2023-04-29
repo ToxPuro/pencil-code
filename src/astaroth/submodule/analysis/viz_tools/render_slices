@@ -1,0 +1,8 @@
+#!/bin/bash
+script_dir=$(realpath $(dirname "${BASH_SOURCE[0]}"))
+
+#TODO: LUMI-specific, please remove and make more resilient
+venv=/scratch/project_462000120/olappi/python_data_analysis_env
+
+source $venv/bin/activate
+$script_dir/render_slices.py $@
